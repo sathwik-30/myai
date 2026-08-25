@@ -5,6 +5,59 @@ from backend.brain.identity import (
     ASSISTANT_NAME
 )
 
+
+def _matches(text, patterns):
+    """Return whether *text* matches one of the complete intent patterns."""
+    return any(re.search(pattern, text) for pattern in patterns)
+
+
+def is_greeting(text):
+    return _matches(text, (
+        r"^(hi|hello|hey|good (morning|afternoon|evening))\b",
+    ))
+
+
+def is_owner_question(text):
+    return _matches(text, (
+        r"\b(who|what)(?:'s| is) (your )?(owner|master)\b",
+        r"\bwho (owns|created) you\b",
+    ))
+
+
+def is_identity_question(text):
+    return _matches(text, (
+        r"\bwho (are|r) you\b",
+        r"\bwhat(?:'s| is) your name\b",
+    ))
+
+
+def is_purpose_question(text):
+    return _matches(text, (
+        r"\bwhat (?:is )?your purpose\b",
+        r"\bwhat (?:can|do) you do\b",
+    ))
+
+
+def is_how_are_you(text):
+    return _matches(text, (
+        r"\bhow are you\b",
+        r"\bhow(?:'s| is) it going\b",
+    ))
+
+
+def is_thanks(text):
+    return _matches(text, (
+        r"\b(thanks|thank you|thx)\b",
+    ))
+
+
+def is_memory_question(text):
+    return _matches(text, (
+        r"\b(what|do you).*(remember|recall)\b",
+        r"\bmy (previous|last) message\b",
+    ))
+
+
 def generate_response(
     message,
     context,
@@ -62,7 +115,9 @@ def generate_response(
             if item["role"] == "user"
         ]
 
-        if len(user_messages) < 2:
+        # The current message is added to the context after this function
+        # returns, so the latest stored user message is the previous one.
+        if not user_messages:
             return (
                 "We haven't talked enough for "
                 "me to recall an earlier message."
@@ -70,8 +125,17 @@ def generate_response(
 
         return (
             f"Your previous message was: "
-            f"{user_messages[-2]}"
+            f"{user_messages[-1]}"
         )
+
+    # Prefer the project's local knowledge base.  It works without Ollama or
+    # an internet connection and avoids sending known questions through the
+    # slower external search pipeline.
+    if knowledge:
+        local_knowledge = knowledge.search(message)
+
+        if local_knowledge:
+            return local_knowledge.get("content", "")
 
     # -----------------------------
     # Intelligent question pipeline
