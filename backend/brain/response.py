@@ -1,3 +1,10 @@
+import re
+
+from backend.brain.identity import (
+    OWNER_NAME,
+    ASSISTANT_NAME
+)
+
 def generate_response(
     message,
     context,
@@ -9,10 +16,14 @@ def generate_response(
     if not text:
         return f"I'm here, {OWNER_NAME}. Say something."
 
+    # -----------------------------
+    # Basic conversation
+    # -----------------------------
+
     if is_greeting(text):
         return (
             f"Hello {OWNER_NAME}. "
-            f"I'm here. How are you?"
+            "I'm here. How are you?"
         )
 
     if is_owner_question(text):
@@ -21,7 +32,7 @@ def generate_response(
     if is_identity_question(text):
         return (
             f"I'm {ASSISTANT_NAME}, "
-            f"your personal assistant."
+            "your personal assistant."
         )
 
     if is_purpose_question(text):
@@ -38,6 +49,10 @@ def generate_response(
 
     if is_thanks(text):
         return "You're welcome."
+
+    # -----------------------------
+    # Conversation memory
+    # -----------------------------
 
     if is_memory_question(text):
 
@@ -58,13 +73,29 @@ def generate_response(
             f"{user_messages[-2]}"
         )
 
-    # ------------------------------------------------
-    # NEW INTELLIGENT PIPELINE
-    # ------------------------------------------------
+    # -----------------------------
+    # Intelligent question pipeline
+    # -----------------------------
 
-    result = search_manager.process(
-        message,
-        context
+    try:
+        result = search_manager.process(
+            message,
+            context
+        )
+
+        if result and result.get("answer"):
+            return result["answer"]
+
+    except Exception as error:
+        print(
+            f"[Medha] Response pipeline error: {error}"
+        )
+
+    # -----------------------------
+    # Final fallback
+    # -----------------------------
+
+    return (
+        f"I'm unable to find a reliable answer "
+        f"right now, {OWNER_NAME}."
     )
-
-    return result["answer"]
