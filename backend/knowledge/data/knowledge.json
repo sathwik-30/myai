@@ -1,0 +1,32 @@
+[
+    {
+        "topic":"python",
+        "keywords":["python","programming","python language"],
+        "content":"Python is a high-level, general-purpose programming language known for its simple syntax and wide use in software development, automation, data science, artificial intelligence and web development."
+    },
+    {
+        "topic":"artificial intelligence",
+        "keywords":["ai","artificial intelligence","machine intelligence"],
+        "content":"Artificial intelligence is the field of creating computer systems that can perform tasks that normally require human intelligence, such as understanding language, recognizing patterns, reasoning and making decisions."
+    },
+    {
+        "topic":"machine learning",
+        "keywords":["machine learning","ml","learning from data"],
+        "content":"Machine learning is a branch of artificial intelligence in which computer systems learn patterns from data and use those patterns to make predictions or decisions."
+    },
+    {
+        "topic":"chess",
+        "keywords":["chess","chess game","board game"],
+        "content":"Chess is a two-player strategy board game played on an 8 by 8 board. Each player starts with sixteen pieces and the objective is to checkmate the opponent's king."
+    },
+    {
+        "topic":"operating system",
+        "keywords":["operating system","os","windows","linux"],
+        "content":"An operating system is system software that manages computer hardware and provides services and an environment for application programs. Examples include Windows, Linux and macOS."
+    },
+    {
+        "topic":"binary search",
+        "keywords":["binary search","binary searching","search sorted array"],
+        "content":"Binary search is an algorithm for finding an element in a sorted sequence by repeatedly comparing the target with the middle element and eliminating half of the remaining search space."
+    }
+]
