@@ -7,8 +7,11 @@ from backend.brain.identity import (
 
 
 def _matches(text, patterns):
-    """Return whether *text* matches one of the complete intent patterns."""
-    return any(re.search(pattern, text) for pattern in patterns)
+    """Return whether text matches one of the intent patterns."""
+    return any(
+        re.search(pattern, text)
+        for pattern in patterns
+    )
 
 
 def is_greeting(text):
@@ -51,6 +54,21 @@ def is_thanks(text):
     ))
 
 
+def is_casual_response(text):
+    """
+    Handle normal conversational replies without sending them
+    to Wikipedia/web search.
+    """
+    return _matches(text, (
+        r"^(fine|good|great|okay|ok|alright)$",
+        r"^(doing good|doing fine|not bad|pretty good)$",
+        r"^(i am fine|i'm fine)$",
+        r"^(i am good|i'm good)$",
+        r"^(i am okay|i'm okay)$",
+        r"^(i am alright|i'm alright)$",
+    ))
+
+
 def is_memory_question(text):
     return _matches(text, (
         r"\b(what|do you).*(remember|recall)\b",
@@ -80,7 +98,10 @@ def generate_response(
         )
 
     if is_owner_question(text):
-        return f"You're {OWNER_NAME}, my owner."
+        return (
+            f"You're {OWNER_NAME}, "
+            "my owner."
+        )
 
     if is_identity_question(text):
         return (
@@ -104,6 +125,16 @@ def generate_response(
         return "You're welcome."
 
     # -----------------------------
+    # Casual conversation
+    # -----------------------------
+
+    if is_casual_response(text):
+        return (
+            f"Good to hear that, {OWNER_NAME}. "
+            "What are we working on?"
+        )
+
+    # -----------------------------
     # Conversation memory
     # -----------------------------
 
@@ -115,8 +146,6 @@ def generate_response(
             if item["role"] == "user"
         ]
 
-        # The current message is added to the context after this function
-        # returns, so the latest stored user message is the previous one.
         if not user_messages:
             return (
                 "We haven't talked enough for "
@@ -128,18 +157,25 @@ def generate_response(
             f"{user_messages[-1]}"
         )
 
-    # Prefer the project's local knowledge base.  It works without Ollama or
-    # an internet connection and avoids sending known questions through the
-    # slower external search pipeline.
-    if knowledge:
-        local_knowledge = knowledge.search(message)
-
-        if local_knowledge:
-            return local_knowledge.get("content", "")
-
     # -----------------------------
-    # Intelligent question pipeline
+    # Intelligent knowledge pipeline
     # -----------------------------
+    #
+    # SearchManager is now responsible for:
+    #
+    # Memory
+    #   ↓
+    # Ollama
+    #   ↓
+    # Wikipedia
+    #   ↓
+    # Web
+    #   ↓
+    # Ollama synthesis
+    #   ↓
+    # Learn
+    #
+    # Do not duplicate that pipeline here.
 
     try:
         result = search_manager.process(
@@ -147,12 +183,16 @@ def generate_response(
             context
         )
 
-        if result and result.get("answer"):
-            return result["answer"]
+        if result:
+            answer = result.get("answer")
+
+            if answer:
+                return answer
 
     except Exception as error:
         print(
-            f"[Medha] Response pipeline error: {error}"
+            f"[Medha] Response pipeline error: "
+            f"{type(error).__name__}: {error}"
         )
 
     # -----------------------------
