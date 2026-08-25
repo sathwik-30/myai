@@ -75,7 +75,6 @@ class SearchManager:
                         "source": "memory"
                     }
 
-                # Memory itself is still useful
                 return {
                     "answer": memory_answer,
                     "source": "memory"
@@ -306,6 +305,11 @@ class SearchManager:
                 ""
             )
 
+            extract = item.get(
+                "extract",
+                ""
+            )
+
             url = item.get(
                 "url",
                 ""
@@ -313,7 +317,8 @@ class SearchManager:
 
             text_parts.append(
                 f"Title: {title}\n"
-                f"Information: {snippet}\n"
+                f"Summary: {extract}\n"
+                f"Search information: {snippet}\n"
                 f"Source: {url}"
             )
 
