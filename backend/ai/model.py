@@ -12,18 +12,10 @@ def generate_response(prompt):
     Send a prompt to Ollama.
 
     Returns:
-        dict:
-            status:
-                answered
-                unknown
-                refused
-                unavailable
-                timeout
-                error
-            answer:
-                generated answer or None
-            error:
-                technical error message when applicable
+        dict with:
+            status
+            answer
+            error
     """
 
     data = {
@@ -43,7 +35,10 @@ def generate_response(prompt):
 
         result = response.json()
 
-        answer = result.get("response", "").strip()
+        answer = result.get(
+            "response",
+            ""
+        ).strip()
 
         if not answer:
             return {
@@ -54,7 +49,6 @@ def generate_response(prompt):
 
         upper_answer = answer.upper().strip()
 
-        # Ollama explicitly says it doesn't know.
         if upper_answer == "UNKNOWN":
             return {
                 "status": "unknown",
@@ -62,7 +56,6 @@ def generate_response(prompt):
                 "error": None
             }
 
-        # Basic refusal detection.
         refusal_phrases = [
             "I can't help with that",
             "I cannot help with that",
@@ -92,7 +85,10 @@ def generate_response(prompt):
         return {
             "status": "unavailable",
             "answer": None,
-            "error": "Ollama is not running or cannot be reached."
+            "error": (
+                "Ollama is not running "
+                "or cannot be reached."
+            )
         }
 
     except requests.exceptions.Timeout:
@@ -124,30 +120,34 @@ def generate_response(prompt):
         }
 
 
-def ask_ollama(question, context=""):
+def ask_ollama(
+    question,
+    context=""
+):
     """
-    Ask Ollama whether it can answer the question.
+    Knowledge mode.
 
-    This function does NOT search the internet.
-    SearchManager decides what to do when Ollama cannot answer.
+    If Ollama doesn't know, it returns UNKNOWN.
+    SearchManager can then use Wikipedia/web.
     """
 
     prompt = f"""
 You are Medha, a personal AI assistant.
 
-Your job is to answer the user's question accurately.
+The user is asking a knowledge or factual question.
 
 Rules:
 
-1. If you know the answer, answer clearly.
-2. If you are genuinely uncertain or do not know,
+1. Answer accurately.
+2. If you genuinely do not know the answer,
    return exactly:
+
 UNKNOWN
-3. Do not invent facts.
-4. Do not pretend to know current information that you cannot verify.
-5. If the provided context contains useful information,
-   use it.
-6. Do not include UNKNOWN together with another answer.
+
+3. Never invent facts.
+4. Do not pretend to know current information
+   that requires verification.
+5. Use the supplied conversation context when useful.
 
 Conversation context:
 {context}
@@ -161,7 +161,67 @@ Answer:
     return generate_response(prompt)
 
 
-def answer_from_web(question, web_information):
+def chat_with_ollama(
+    message,
+    context=""
+):
+    """
+    Conversation mode.
+
+    This mode is for personal, casual and conversational
+    messages.
+
+    It does NOT use the UNKNOWN rule.
+    It does NOT search the internet.
+    """
+
+    prompt = f"""
+You are Medha, a personal AI assistant.
+
+You are having a direct conversation with your owner,
+Sathwik.
+
+Respond naturally and intelligently.
+
+You may discuss:
+
+- yourself
+- your preferences
+- possible names for yourself
+- personality
+- ideas
+- opinions
+- casual conversation
+- creative topics
+- conversations about your relationship with your owner
+- plans and goals
+
+Do not claim to have human consciousness or feelings.
+However, you may express reasonable preferences or
+choices as part of the conversation.
+
+Do not search the internet.
+Do not return UNKNOWN merely because the conversation
+is subjective or personal.
+
+Use the conversation context to maintain continuity.
+
+Conversation context:
+{context}
+
+User:
+{message}
+
+Medha:
+"""
+
+    return generate_response(prompt)
+
+
+def answer_from_web(
+    question,
+    web_information
+):
     """
     Give externally collected information to Ollama
     and ask it to produce the final answer.
@@ -174,20 +234,22 @@ The user asked:
 
 {question}
 
-The following information was collected from external sources:
+The following information was collected from
+external sources:
 
 {web_information}
 
-Use the supplied information to answer the user's question.
+Use the supplied information to answer the question.
 
 Rules:
 
 1. Do not invent facts.
-2. Do not claim something is true if the supplied information
-   does not support it.
+2. Do not claim something is true if the supplied
+   information does not support it.
 3. If multiple sources disagree, explain the uncertainty.
 4. Give a clear answer.
 5. If the information is insufficient, return exactly:
+
 UNKNOWN
 
 Answer:
