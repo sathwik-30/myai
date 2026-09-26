@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import "./App.css";
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || "";
+const API_BASE_URL = import.meta.env.VITE_API_URL || "";\nconst API_CANDIDATES = [\n    `${API_BASE_URL}/api`,\n    "http://127.0.0.1:8000/api",\n].filter((value, index, list) => list.indexOf(value) === index);\n\nasync function apiRequest(path, options = {}) {\n    let lastError = null;\n\n    for (const base of API_CANDIDATES) {\n        try {\n            const response = await fetch(`${base}${path}`, {\n                ...options,\n                cache: "no-store",\n            });\n            return response;\n        } catch (error) {\n            lastError = error;\n        }\n    }\n\n    throw lastError || new Error("Unable to reach Medha backend");\n}
 
 function App() {
     const [messages, setMessages] = useState([]);
@@ -47,7 +47,7 @@ function App() {
         setLoading(true);
 
         try {
-            const response = await fetch(`${API_BASE_URL}/api/chat`, {
+            const response = await apiRequest("/chat", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ message }),
