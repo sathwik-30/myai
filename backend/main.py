@@ -1,21 +1,32 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+
 from backend.api.chat import router
 
-app=FastAPI(title="Medha AI")
+app = FastAPI(title="Medha AI", version="1.0.0")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
     allow_credentials=True,
     allow_methods=["*"],
-    allow_headers=["*"]
+    allow_headers=["*"],
 )
 
-app.include_router(router,prefix="/api")
+app.include_router(router, prefix="/api")
+
 
 @app.get("/")
 def home():
     return {
-        "message":"Medha is running"
+        "message": "Medha is running",
+        "status": "online",
+    }
+
+
+@app.get("/api/health")
+def health():
+    return {
+        "status": "ok",
+        "service": "medha-backend",
     }
