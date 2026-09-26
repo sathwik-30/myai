@@ -24,6 +24,12 @@ CASUAL_STARTS = (
     "how are you", "what are you doing", "thanks", "thank you",
 )
 
+TEMPORARY_PERSONAL_PHRASES = (
+    "i am fine", "i'm fine", "i am good", "i'm good",
+    "i am okay", "i'm okay", "i am ok", "i'm ok",
+    "i am doing fine", "i'm doing fine",
+)
+
 def _tokens(text: str) -> set[str]:
     return set(re.findall(r"[a-z0-9]+", text.lower()))
 
@@ -34,9 +40,14 @@ def classify(message: str) -> Intent:
     if any(cue in text for cue in MEMORY_CUES):
         return "memory"
 
+    if text in TEMPORARY_PERSONAL_PHRASES:
+        return "casual"
+
+    # Store stable facts and preferences, not every sentence beginning with
+    # "I am". This prevents ordinary conversation from polluting memory.
     if (
         re.search(r"\bmy\s+(name|project|goal|preference|favorite|favourite|skill|role|college|course|branch)\b", text)
-        or re.search(r"\bi\s+(prefer|like|love|hate|use|work|study|want|need|am|have)\b", text)
+        or re.search(r"\bi\s+(prefer|like|love|hate|use|work|study|want|need)\b", text)
         or re.search(r"\bcall me\b", text)
     ):
         return "personal"
