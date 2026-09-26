@@ -5,7 +5,7 @@ from backend.brain.intent import classify
 
 PERSONAL_PATTERNS = (
     r"\bmy\s+(?:name|project|goal|preference|favorite|favourite|skill|role|college|course|branch)\b",
-    r"\bi\s+(?:prefer|like|love|hate|use|work|study|want|need|am|have)\b",
+    r"\bi\s+(?:prefer|like|love|hate|use|work|study|want|need)\b",
     r"\bcall me\b",
 )
 
@@ -27,71 +27,30 @@ def evaluate_memory(
     answer: str = "",
     source: str = "conversation",
 ) -> Dict[str, Any]:
-    """
-    Local memory evaluator. It decides whether information is likely to
-    remain useful after the current conversation.
-
-    This intentionally does not use an LLM or Ollama.
-    """
     text = " ".join(str(message or "").lower().split())
     tokens = re.findall(r"[a-z0-9]+", text)
 
     if not text or any(re.search(pattern, text) for pattern in TRIVIAL_PATTERNS):
-        return {
-            "save": False,
-            "importance": 1,
-            "memory_type": "temporary",
-            "reason": "casual_small_talk",
-        }
+        return {"save": False, "importance": 1, "memory_type": "temporary", "reason": "casual_small_talk"}
 
     if any(re.search(pattern, text) for pattern in TEMPORARY_PATTERNS):
-        return {
-            "save": False,
-            "importance": 1,
-            "memory_type": "temporary",
-            "reason": "time_limited_context",
-        }
+        return {"save": False, "importance": 1, "memory_type": "temporary", "reason": "time_limited_context"}
 
     if any(re.search(pattern, text) for pattern in PERSONAL_PATTERNS):
-        return {
-            "save": True,
-            "importance": 4,
-            "memory_type": "personal",
-            "reason": "future_personal_utility",
-        }
+        return {"save": True, "importance": 4, "memory_type": "personal", "reason": "future_personal_utility"}
 
     intent = classify(text)
 
     if intent == "memory":
-        return {
-            "save": True,
-            "importance": 5,
-            "memory_type": "personal",
-            "reason": "explicit_memory_instruction",
-        }
+        return {"save": True, "importance": 5, "memory_type": "personal", "reason": "explicit_memory_instruction"}
 
     if source in {"wikipedia", "web"} or intent == "technical":
-        return {
-            "save": True,
-            "importance": 3,
-            "memory_type": "knowledge",
-            "reason": "researched_knowledge",
-        }
+        return {"save": True, "importance": 3, "memory_type": "knowledge", "reason": "researched_knowledge"}
 
     if len(tokens) >= 8 and any(word in text for word in (
         "project", "learn", "learning", "build", "building", "goal",
         "prefer", "use", "working", "study", "course",
     )):
-        return {
-            "save": True,
-            "importance": 3,
-            "memory_type": "personal",
-            "reason": "likely_future_utility",
-        }
+        return {"save": True, "importance": 3, "memory_type": "personal", "reason": "likely_future_utility"}
 
-    return {
-        "save": False,
-        "importance": 1,
-        "memory_type": "temporary",
-        "reason": "not_useful_enough",
-    }
+    return {"save": False, "importance": 1, "memory_type": "temporary", "reason": "not_useful_enough"}
