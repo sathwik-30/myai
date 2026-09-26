@@ -1,66 +1,97 @@
-from backend.ai.model import generate_response
+import re
+from typing import Any, Dict
 
+from backend.brain.intent import classify
+
+PERSONAL_PATTERNS = (
+    r"\bmy\s+(?:name|project|goal|preference|favorite|favourite|skill|role|college|course|branch)\b",
+    r"\bi\s+(?:prefer|like|love|hate|use|work|study|want|need|am|have)\b",
+    r"\bcall me\b",
+)
+
+TEMPORARY_PATTERNS = (
+    r"\bright now\b",
+    r"\btoday\b",
+    r"\btonight\b",
+    r"\bfor now\b",
+    r"\bcurrently\b",
+)
+
+TRIVIAL_PATTERNS = (
+    r"^(hi|hello|hey|thanks|thank you|good morning|good night)[!. ]*$",
+    r"\bhow are you\b",
+)
 
 def evaluate_memory(
-    question,
-    answer
-):
+    message: str,
+    answer: str = "",
+    source: str = "conversation",
+) -> Dict[str, Any]:
     """
-    Ask Ollama whether the information should
-    become long-term memory.
+    Local memory evaluator. It decides whether information is likely to
+    remain useful after the current conversation.
+
+    This intentionally does not use an LLM or Ollama.
     """
+    text = " ".join(str(message or "").lower().split())
+    tokens = re.findall(r"[a-z0-9]+", text)
 
-    prompt = f"""
-You are Medha's memory evaluator.
+    if not text or any(re.search(pattern, text) for pattern in TRIVIAL_PATTERNS):
+        return {
+            "save": False,
+            "importance": 1,
+            "memory_type": "temporary",
+            "reason": "casual_small_talk",
+        }
 
-Decide whether this information is worth
-remembering for future conversations.
+    if any(re.search(pattern, text) for pattern in TEMPORARY_PATTERNS):
+        return {
+            "save": False,
+            "importance": 1,
+            "memory_type": "temporary",
+            "reason": "time_limited_context",
+        }
 
-User message:
-{question}
+    if any(re.search(pattern, text) for pattern in PERSONAL_PATTERNS):
+        return {
+            "save": True,
+            "importance": 4,
+            "memory_type": "personal",
+            "reason": "future_personal_utility",
+        }
 
-Answer:
-{answer}
+    intent = classify(text)
 
-Return ONLY JSON:
+    if intent == "memory":
+        return {
+            "save": True,
+            "importance": 5,
+            "memory_type": "personal",
+            "reason": "explicit_memory_instruction",
+        }
 
-{{
-    "save": true,
-    "importance": 1,
-    "memory_type": "preference"
-}}
+    if source in {"wikipedia", "web"} or intent == "technical":
+        return {
+            "save": True,
+            "importance": 3,
+            "memory_type": "knowledge",
+            "reason": "researched_knowledge",
+        }
 
-Rules:
+    if len(tokens) >= 8 and any(word in text for word in (
+        "project", "learn", "learning", "build", "building", "goal",
+        "prefer", "use", "working", "study", "course",
+    )):
+        return {
+            "save": True,
+            "importance": 3,
+            "memory_type": "personal",
+            "reason": "likely_future_utility",
+        }
 
-importance:
-1 = trivial / temporary
-2 = mildly useful
-3 = useful later
-4 = important long-term
-5 = critical identity, owner, security or major project information
-
-memory_type must be one of:
-
-identity
-owner
-preference
-goal
-project
-instruction
-knowledge
-conversation
-temporary
-
-Do not save greetings, casual small talk,
-repeated information or meaningless details.
-"""
-
-    result = generate_response(prompt)
-
-    if not result:
-        return None
-
-    if result.get("status") != "answered":
-        return None
-
-    return result.get("answer")
+    return {
+        "save": False,
+        "importance": 1,
+        "memory_type": "temporary",
+        "reason": "not_useful_enough",
+    }
