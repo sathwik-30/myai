@@ -16,8 +16,9 @@ class LanguageUnderstanding:
         self,
         message: str,
         context: List[Dict[str, Any]] | None = None,
+        user_id: int | None = None,
     ) -> Dict[str, Any]:
-        matches = search(message, top_k=5, min_score=0.30)
+        matches = search(message, top_k=5, min_score=0.30, user_id=user_id)
         return {
             "message": message,
             "matches": matches,
@@ -28,6 +29,7 @@ class LanguageUnderstanding:
         self,
         message: str,
         context: List[Dict[str, Any]] | None = None,
+        user_id: int | None = None,
     ) -> str | None:
-        matches = self.understand(message, context)["matches"]
+        matches = self.understand(message, context, user_id)["matches"]
         return matches[0].get("answer") if matches else None
