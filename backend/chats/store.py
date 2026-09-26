@@ -6,8 +6,12 @@ DB_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "memory", "da
 
 def _connect():
     os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
-    db = sqlite3.connect(DB_PATH)
+    # Give SQLite a longer window for short concurrent writes and use WAL so
+    # normal reads do not block message persistence.
+    db = sqlite3.connect(DB_PATH, timeout=15.0)
     db.row_factory = sqlite3.Row
+    db.execute("PRAGMA busy_timeout=15000")
+    db.execute("PRAGMA journal_mode=WAL")
     return db
 
 def init_chat_tables():
