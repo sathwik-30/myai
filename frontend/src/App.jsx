@@ -169,7 +169,9 @@ function App() {
             await loadChats();
             setActiveChat((current) => current ? { ...current, updated_at: new Date().toISOString() } : current);
         } catch (err) {
-            setMessages((prev) => [...prev, { role: "assistant", message: "I couldn't process that message.", error: err.message }]);
+            // Do not create a fake assistant message for a failed request.
+            // The backend persists the user turn, and the next reload will show
+            // exactly what is actually stored.
             setError(err.message);
         } finally {
             setLoading(false);
