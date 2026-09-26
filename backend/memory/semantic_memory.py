@@ -259,6 +259,44 @@ def search(text: str, top_k: int = 3, min_score: float = 0.30) -> List[Dict[str,
         results.append(result)
     return results
 
+def list_memories(
+    memory_type: Optional[str] = None,
+    limit: int = 100,
+) -> List[Dict[str, Any]]:
+    _prepare()
+    limit = max(1, min(500, int(limit)))
+
+    with _connect() as db:
+        if memory_type:
+            rows = db.execute(
+                """SELECT id, text, answer, memory_type, source,
+                          importance, created_at, updated_at
+                   FROM memories
+                   WHERE memory_type = ?
+                   ORDER BY importance DESC, id DESC
+                   LIMIT ?""",
+                (memory_type, limit),
+            ).fetchall()
+        else:
+            rows = db.execute(
+                """SELECT id, text, answer, memory_type, source,
+                          importance, created_at, updated_at
+                   FROM memories
+                   ORDER BY importance DESC, id DESC
+                   LIMIT ?""",
+                (limit,),
+            ).fetchall()
+
+    return [dict(row) for row in rows]
+
+
+def delete_memory(memory_id: int) -> bool:
+    _prepare()
+    with _connect() as db:
+        cursor = db.execute("DELETE FROM memories WHERE id = ?", (int(memory_id),))
+        db.commit()
+        return cursor.rowcount > 0
+
 def count() -> int:
     _prepare()
     with _connect() as db:
