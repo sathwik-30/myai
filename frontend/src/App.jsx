@@ -254,10 +254,20 @@ function App() {
 
     useEffect(() => {
         if (!username) return;
-        loadChats().catch((err) => {
-            if (String(err.message).includes("401")) logout();
-            else setError(err.message);
-        });
+
+        loadChats()
+            .then((nextChats) => {
+                if (nextChats.length) {
+                    return openChat(nextChats[0].id);
+                }
+                setActiveChat(null);
+                setMessages([]);
+                return null;
+            })
+            .catch((err) => {
+                if (String(err.message).includes("401")) logout();
+                else setError(err.message);
+            });
     }, [username]);
 
     useEffect(() => {
