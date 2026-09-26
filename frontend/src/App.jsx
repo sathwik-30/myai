@@ -101,10 +101,7 @@ function App() {
         const data = await jsonRequest("/chats");
         const nextChats = data.chats || [];
         setChats(nextChats);
-
-        if (!activeChat && nextChats.length) {
-            await openChat(nextChats[0].id);
-        }
+        return nextChats;
     };
 
     const openChat = async (chatId) => {
