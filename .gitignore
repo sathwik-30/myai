@@ -2,3 +2,16 @@
 backend/memory/data/*.db
 backend/memory/data/*.db-*
 backend/memory/data/*.json
+
+# Python runtime artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+.venv/
+env/
+.env
+.env.*
+
+# Local training/runtime data
+data/training/
