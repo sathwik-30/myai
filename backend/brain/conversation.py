@@ -101,7 +101,7 @@ class ConversationEngine:
 
             else:
                 decision = evaluate_memory(message, response, source)
-                if decision["save"] and source not in {"fallback", "ask_user", "memory_request"}:
+                if decision["save"]:
                     self.memory.learn(
                         message,
                         response,
