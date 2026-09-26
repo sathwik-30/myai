@@ -1,7 +1,29 @@
 import { useEffect, useRef, useState } from "react";
 import "./App.css";
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || "";\nconst API_CANDIDATES = [\n    `${API_BASE_URL}/api`,\n    "http://127.0.0.1:8000/api",\n].filter((value, index, list) => list.indexOf(value) === index);\n\nasync function apiRequest(path, options = {}) {\n    let lastError = null;\n\n    for (const base of API_CANDIDATES) {\n        try {\n            const response = await fetch(`${base}${path}`, {\n                ...options,\n                cache: "no-store",\n            });\n            return response;\n        } catch (error) {\n            lastError = error;\n        }\n    }\n\n    throw lastError || new Error("Unable to reach Medha backend");\n}
+const API_BASE_URL = import.meta.env.VITE_API_URL || "";
+const API_CANDIDATES = [
+    `${API_BASE_URL}/api`,
+    "http://127.0.0.1:8000/api",
+].filter((value, index, list) => list.indexOf(value) === index);
+
+async function apiRequest(path, options = {}) {
+    let lastError = null;
+
+    for (const base of API_CANDIDATES) {
+        try {
+            const response = await fetch(`${base}${path}`, {
+                ...options,
+                cache: "no-store",
+            });
+            return response;
+        } catch (error) {
+            lastError = error;
+        }
+    }
+
+    throw lastError || new Error("Unable to reach Medha backend");
+}
 
 function App() {
     const [messages, setMessages] = useState([]);
