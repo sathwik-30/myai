@@ -190,6 +190,32 @@ function App() {
         await openChat(activeChat.id);
     };
 
+    const renameChat = async (chat) => {
+        const title = window.prompt("Rename chat", chat.title);
+        if (!title?.trim() || title.trim() === chat.title) return;
+
+        try {
+            await jsonRequest(`/chats/${chat.id}`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ title: title.trim() }),
+            });
+
+            // Refresh only the sidebar metadata. Messages in every chat stay untouched.
+            const data = await jsonRequest("/chats");
+            setChats(data.chats || []);
+
+            // Keep the currently selected conversation open.
+            if (activeChat?.id === chat.id) {
+                const updated = await jsonRequest(`/chats/${chat.id}`);
+                setActiveChat(updated.chat);
+                setMessages(updated.messages || []);
+            }
+        } catch (err) {
+            setError(`Could not rename chat: ${err.message}`);
+        }
+    };
+
     const deleteActive = async () => {
         if (!activeChat || !window.confirm("Delete this chat and its messages?")) return;
         await jsonRequest(`/chats/${activeChat.id}`, { method: "DELETE" });
@@ -232,9 +258,22 @@ function App() {
                 </div>
                 <div className="chat-list">
                     {chats.map((chat) => (
-                        <button key={chat.id} className={`chat-item ${activeChat?.id === chat.id ? "active" : ""}`} onClick={() => openChat(chat.id)}>
-                            <span>{chat.title}</span>
-                        </button>
+                        <div key={chat.id} className={`chat-item-wrap ${activeChat?.id === chat.id ? "active" : ""}`}>
+                            <button className="chat-item" onClick={() => openChat(chat.id)}>
+                                <span>{chat.title}</span>
+                            </button>
+                            <button
+                                className="chat-rename"
+                                onClick={(event) => {
+                                    event.stopPropagation();
+                                    renameChat(chat);
+                                }}
+                                title="Rename chat"
+                                aria-label={`Rename ${chat.title}`}
+                            >
+                                ✎
+                            </button>
+                        </div>
                     ))}
                     {!chats.length && <p className="empty-side">No conversations yet.</p>}
                 </div>
