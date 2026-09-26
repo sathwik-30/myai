@@ -172,7 +172,9 @@ function App() {
         await jsonRequest(`/chats/${activeChat.id}`, { method: "DELETE" });
         setActiveChat(null);
         setMessages([]);
-        await loadChats();
+        const data = await jsonRequest("/chats");
+        setChats(data.chats || []);
+        if (data.chats?.length) await openChat(data.chats[0].id);
     };
 
     const logout = () => {
