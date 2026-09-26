@@ -3,10 +3,20 @@ import hashlib
 import hmac
 import json
 import os
+import secrets
 import time
+
+from dotenv import load_dotenv
+
+load_dotenv()
 from typing import Any, Dict
 
-SECRET = os.getenv("MEDHA_AUTH_SECRET", "CHANGE-ME-IN-PRODUCTION").encode()
+SECRET = os.getenv("MEDHA_AUTH_SECRET")
+if not SECRET:
+    # Never use a known shared signing key. A missing local secret generates a
+    # process-local key, which safely invalidates tokens on backend restart.
+    SECRET = secrets.token_urlsafe(48)
+SECRET = SECRET.encode()
 TOKEN_TTL = 60 * 60 * 24 * 7
 
 def _b64(data: bytes) -> str:
