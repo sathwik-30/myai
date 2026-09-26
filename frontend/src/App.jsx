@@ -31,7 +31,11 @@ async function jsonRequest(path, options = {}) {
     const response = await apiRequest(path, options);
     let data = {};
     try { data = await response.json(); } catch {}
-    if (!response.ok) throw new Error(data.detail || `HTTP ${response.status}`);
+    if (!response.ok) {
+        const error = new Error(data.detail || `HTTP ${response.status}`);
+        error.status = response.status;
+        throw error;
+    }
     return data;
 }
 
@@ -275,7 +279,7 @@ function App() {
                 return null;
             })
             .catch((err) => {
-                if (String(err.message).includes("401")) logout();
+                if (err.status === 401) logout();
                 else setError(err.message);
             });
     }, [username]);
