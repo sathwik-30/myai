@@ -195,21 +195,26 @@ function App() {
         if (!title?.trim() || title.trim() === chat.title) return;
 
         try {
+            const nextTitle = title.trim();
+
             await jsonRequest(`/chats/${chat.id}`, {
                 method: "PATCH",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ title: title.trim() }),
+                body: JSON.stringify({ title: nextTitle }),
             });
 
-            // Refresh only the sidebar metadata. Messages in every chat stay untouched.
-            const data = await jsonRequest("/chats");
-            setChats(data.chats || []);
+            // Rename is title-only. Do not reload the conversation or replace
+            // the current message state. The stored messages remain untouched.
+            setChats((current) =>
+                current.map((item) =>
+                    item.id === chat.id ? { ...item, title: nextTitle } : item
+                )
+            );
 
-            // Keep the currently selected conversation open.
             if (activeChat?.id === chat.id) {
-                const updated = await jsonRequest(`/chats/${chat.id}`);
-                setActiveChat(updated.chat);
-                setMessages(updated.messages || []);
+                setActiveChat((current) =>
+                    current ? { ...current, title: nextTitle } : current
+                );
             }
         } catch (err) {
             setError(`Could not rename chat: ${err.message}`);
