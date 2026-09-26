@@ -1,0 +1,4 @@
+# Local Medha runtime data
+backend/memory/data/*.db
+backend/memory/data/*.db-*
+backend/memory/data/*.json
