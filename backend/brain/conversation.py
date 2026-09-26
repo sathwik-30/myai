@@ -3,6 +3,7 @@ from backend.brain.intent import classify
 from backend.brain.response import generate_response
 from backend.knowledge.knowledge_base import KnowledgeBase
 from backend.search.search_manager import SearchManager
+from backend.memory.evaluator import evaluate_memory
 from backend.memory.manager import MemoryManager
 
 
@@ -29,8 +30,8 @@ class ConversationEngine:
             response = str(result)
             source = "memory"
 
-        # If Medha asked the user to supply an unknown casual fact,
-        # treat the next user message as the answer to the previous question.
+        # Answer an unknown casual/personal fact when the previous turn
+        # explicitly asked the user to supply it.
         if history and history[-1].get("role") == "assistant":
             previous_answer = history[-1].get("message", "")
             if previous_answer.startswith("I don't know that yet.") and message.strip():
@@ -47,7 +48,6 @@ class ConversationEngine:
                     response = "Got it. I'll remember that for our future conversations."
                     source = "memory_saved"
 
-        # Explicit memory statements should be stored as personal knowledge.
         elif classify(message) == "memory":
             self.memory.learn_personal(
                 message,
@@ -56,6 +56,18 @@ class ConversationEngine:
             )
             response = "Got it. I'll remember that."
             source = "memory_saved"
+
+        # Automatically preserve information that is likely to matter later.
+        else:
+            decision = evaluate_memory(message, response, source)
+            if decision["save"] and source not in {"fallback", "ask_user", "memory_request"}:
+                self.memory.learn(
+                    message,
+                    response,
+                    source=source,
+                    importance=decision["importance"],
+                    memory_type=decision["memory_type"],
+                )
 
         self.context.add("user", message)
         self.context.add("assistant", response)
