@@ -99,8 +99,14 @@ function App() {
 
     const loadChats = async () => {
         const data = await jsonRequest("/chats");
-        setChats(data.chats || []);
-        if (!activeChat && data.chats?.length) await openChat(data.chats[0].id);
+        const nextChats = data.chats || [];
+        setChats(nextChats);
+
+        if (!activeChat && nextChats.length) {
+            await openChat(nextChats[0].id);
+        } else if (!activeChat && !nextChats.length) {
+            await newChat();
+        }
     };
 
     const openChat = async (chatId) => {
@@ -116,7 +122,8 @@ function App() {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ title: "New chat" }),
         });
-        await loadChats();
+        const chatsData = await jsonRequest("/chats");
+        setChats(chatsData.chats || []);
         await openChat(data.chat_id);
         setInput("");
         textareaRef.current?.focus();
