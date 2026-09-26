@@ -48,13 +48,17 @@ class ConversationEngine:
                     response = "Got it. I'll remember that for our future conversations."
                     source = "memory_saved"
 
-        elif classify(message) == "memory":
+        elif classify(message) in {"memory", "personal"}:
             self.memory.learn_personal(
                 message,
                 message,
-                importance=5,
+                importance=5 if classify(message) == "memory" else 4,
             )
-            response = "Got it. I'll remember that."
+            response = (
+                "Got it. I'll remember that."
+                if classify(message) == "memory"
+                else "Got it. I'll keep that in mind for future conversations."
+            )
             source = "memory_saved"
 
         # Automatically preserve information that is likely to matter later.
