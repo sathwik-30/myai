@@ -85,6 +85,21 @@ def generate_response(message, context, knowledge, search_manager, user_id=None)
             "source": "system",
         }
 
+    normalized = " ".join(message.lower().split()).rstrip("?!.")
+    if normalized in {"who am i to you", "what am i to you", "i am to you", "wt i am to u", "what is our relationship"}:
+        identity_name = OWNER_NAME
+        if user_id is not None:
+            try:
+                from backend.chats.store import get_user
+                account = get_user(str(user_id))
+                identity_name = account.get("username") if account else OWNER_NAME
+            except Exception:
+                identity_name = OWNER_NAME
+        if language == "telugu":
+            return {"answer": f"నువ్వు {identity_name}, నా యూజర్. నేను మెధా, నీ వ్యక్తిగత AI అసిస్టెంట్‌ను.", "source": "identity"}
+        if language == "roman_telugu":
+            return {"answer": f"Nuvvu {identity_name}, naa user. Nenu Medha, nee personal AI assistant ni.", "source": "identity"}
+        return {"answer": f"You are {identity_name}, my user. I'm Medha, your personal AI assistant.", "source": "identity"}
     answer = UNDERSTANDING.best_memory_answer(message, context, user_id)
     if answer:
         return {
