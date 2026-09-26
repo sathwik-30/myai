@@ -105,9 +105,13 @@ def list_messages(user_id, chat_id):
         return [dict(row) for row in rows]
 
 def rename_chat(user_id, chat_id, title):
+    # Renaming is metadata-only. Do not touch updated_at or any message row.
+    # This keeps the conversation content and its position in history unchanged.
     with _connect() as db:
-        cur = db.execute("UPDATE chats SET title=?,updated_at=? WHERE id=? AND user_id=?",
-                         (title[:120] or "New chat", _now(), chat_id, user_id))
+        cur = db.execute(
+            "UPDATE chats SET title=? WHERE id=? AND user_id=?",
+            (title[:120] or "New chat", chat_id, user_id),
+        )
         db.commit()
         return cur.rowcount > 0
 
