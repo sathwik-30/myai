@@ -14,15 +14,17 @@ function App() {
 
     const checkBackend = async () => {
         try {
-            const response = await fetch(
-                `${API_BASE_URL}/api/health`,
-                { cache: "no-store" }
-            );
+            const response = await fetch(`${API_BASE_URL}/api/health`, {
+                cache: "no-store",
+            });
 
             setBackendOnline(response.ok);
-            setBackendError(response.ok ? "" : `Backend returned HTTP ${response.status}`);
-        } catch {
+            setBackendError(
+                response.ok ? "" : `Backend returned HTTP ${response.status}`
+            );
+        } catch (error) {
             setBackendOnline(false);
+            setBackendError(error?.message || "Cannot reach FastAPI");
         }
     };
 
@@ -38,7 +40,6 @@ function App() {
 
     const sendMessage = async () => {
         const message = input.trim();
-
         if (!message || loading) return;
 
         setMessages((prev) => [...prev, { role: "user", message }]);
@@ -53,7 +54,14 @@ function App() {
             });
 
             if (!response.ok) {
-                throw new Error(`Backend returned HTTP ${response.status}`);
+                let detail = `Backend returned HTTP ${response.status}`;
+                try {
+                    const errorData = await response.json();
+                    detail = errorData.detail || detail;
+                } catch {
+                    // Keep the HTTP status when the server did not return JSON.
+                }
+                throw new Error(detail);
             }
 
             const data = await response.json();
@@ -62,27 +70,39 @@ function App() {
                 ...prev,
                 {
                     role: "assistant",
-                    message: data.response || "I received your message, but no response was returned.",\n                    source: data.source,\n                    latency: data.latency_ms,
+                    message:
+                        data.response ||
+                        "I received your message, but no response was returned.",
+                    source: data.source,
+                    latency: data.latency_ms,
                 },
             ]);
 
-            setBackendOnline(true);\n            setBackendError("");
+            setBackendOnline(true);
+            setBackendError("");
         } catch (error) {
             console.error("Medha backend error:", error);
             setBackendOnline(false);
+            setBackendError(error?.message || "Connection failed");
 
             setMessages((prev) => [
                 ...prev,
                 {
                     role: "assistant",
-                    message:
-                        "I can't reach Medha's backend right now. Make sure the FastAPI server is running on port 8000.",
+                    message: "I couldn't process that message.",
+                    error: error?.message || "Backend connection failed",
                 },
             ]);
         } finally {
             setLoading(false);
             setTimeout(() => textareaRef.current?.focus(), 0);
         }
+    };
+
+    const clearChat = () => {
+        setMessages([]);
+        setInput("");
+        textareaRef.current?.focus();
     };
 
     const handleKeyDown = (event) => {
@@ -103,9 +123,21 @@ function App() {
                     </div>
                 </div>
 
-                <div className={`status ${backendOnline ? "online" : "offline"}`}>
-                    <span className="status-dot" />
-                    {backendOnline ? "Connected" : "Offline"}
+                <div className="header-actions">
+                    {messages.length > 0 && (
+                        <button className="clear-button" onClick={clearChat}>
+                            Clear
+                        </button>
+                    )}
+
+                    <button
+                        className={`status ${backendOnline ? "online" : "offline"}`}
+                        onClick={checkBackend}
+                        title={backendError || "Backend connection"}
+                    >
+                        <span className="status-dot" />
+                        {backendOnline ? "Connected" : "Offline"}
+                    </button>
                 </div>
             </header>
 
@@ -116,11 +148,25 @@ function App() {
                         <p className="eyebrow">YOUR PERSONAL ASSISTANT</p>
                         <h2>What can I help you with?</h2>
                         <p className="welcome-text">
-                            Talk naturally. Medha uses what it has learned from you
-                            to understand and respond.
+                            Talk naturally. Medha learns useful conversations and
+                            retrieves what it knows without Ollama.
                         </p>
+
+                        {!backendOnline && (
+                            <div className="connection-warning">
+                                <strong>Backend offline</strong>
+                                <span>
+                                    Start FastAPI on port 8000, then click the status
+                                    indicator to retry.
+                                </span>
+                                {backendError && <small>{backendError}</small>}
+                            </div>
+                        )}
+
                         <div className="suggestions">
-                            <button onClick={() => setInput("Hi Medha")}>Say hello</button>
+                            <button onClick={() => setInput("Hi Medha")}>
+                                Say hello
+                            </button>
                             <button onClick={() => setInput("What do you remember?")}>
                                 Test memory
                             </button>
@@ -134,7 +180,27 @@ function App() {
                 {messages.map((item, index) => (
                     <div key={index} className={`message-row ${item.role}`}>
                         {item.role === "assistant" && <div className="avatar">M</div>}
-                        <div className="message">{item.message}</div>
+
+                        <div>
+                            <div className={`message ${item.error ? "error-message" : ""}`}>
+                                {item.message}
+                            </div>
+
+                            {item.error && (
+                                <div className="message-error-detail">
+                                    {item.error}
+                                </div>
+                            )}
+
+                            {item.role === "assistant" &&
+                                !item.error &&
+                                (item.source || item.latency) && (
+                                    <div className="message-meta">
+                                        {item.source || "medha"}
+                                        {item.latency ? ` · ${item.latency} ms` : ""}
+                                    </div>
+                                )}
+                        </div>
                     </div>
                 ))}
 
@@ -168,11 +234,13 @@ function App() {
                         disabled={loading || !input.trim()}
                         aria-label="Send message"
                     >
-                        ↑
+                        {loading ? "…" : "↑"}
                     </button>
                 </div>
+
                 <p className="composer-hint">
-                    Enter to send · Shift + Enter for a new line
+                    Enter to send · Shift + Enter for a new line · Click Connected
+                    to test the backend
                 </p>
             </div>
         </div>
