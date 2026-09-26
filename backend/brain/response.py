@@ -24,7 +24,13 @@ def generate_response(message, context, knowledge, search_manager):
 
     intent = classify(message)
 
-    if intent in {"casual", "memory"}:
+    if intent in {"casual", "memory", "personal"}:
+        if intent == "personal":
+            return {
+                "answer": "Got it. I'll keep that in mind for future conversations.",
+                "source": "personal",
+            }
+
         if intent == "memory":
             return {
                 "answer": (
