@@ -4,8 +4,9 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "concurrently \"npm run backend\" \"vite\"",
-    "backend": "cd .. && python -m uvicorn backend.main:app --reload",
+    "dev": "vite",
+    "backend": "cd .. && python -m uvicorn backend.main:app --reload --host 127.0.0.1 --port 8000",
+    "dev:all": "concurrently \"npm run backend\" \"vite\"",
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview"
@@ -15,11 +16,11 @@
     "react-dom": "^19.2.8"
   },
   "devDependencies": {
-    "@eslint/js": "^10.0.1",
+    "@eslint/js": "^10.0.0",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.4",
-    "concurrently": "^10.0.5",
+    "concurrently": "^10.0.0",
     "eslint": "^10.8.0",
     "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-plugin-react-refresh": "^0.5.3",
