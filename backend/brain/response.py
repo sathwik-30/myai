@@ -4,15 +4,22 @@ from backend.memory.semantic_memory import remember
 
 UNDERSTANDING = LanguageUnderstanding()
 
+
 def generate_response(message, context, knowledge, search_manager):
     message = message.strip()
 
     if not message:
-        return f"I'm here, {OWNER_NAME}. Say something."
+        return {
+            "answer": f"I'm here, {OWNER_NAME}. Say something.",
+            "source": "system",
+        }
 
     answer = UNDERSTANDING.best_memory_answer(message, context)
     if answer:
-        return answer
+        return {
+            "answer": answer,
+            "source": "memory",
+        }
 
     result = search_manager.process(message, context)
 
@@ -24,9 +31,15 @@ def generate_response(message, context, knowledge, search_manager):
             memory_type="knowledge",
             source=result.get("source", "search"),
         )
-        return answer
+        return {
+            "answer": answer,
+            "source": result.get("source", "search"),
+        }
 
-    return (
-        f"I don't have enough learned information to answer that yet, "
-        f"{OWNER_NAME}."
-    )
+    return {
+        "answer": (
+            f"I don't have enough learned information to answer that yet, "
+            f"{OWNER_NAME}."
+        ),
+        "source": "fallback",
+    }
