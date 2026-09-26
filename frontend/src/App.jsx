@@ -182,14 +182,27 @@ function App() {
     const renameActive = async () => {
         if (!activeChat) return;
         const title = window.prompt("Chat name", activeChat.title);
-        if (!title?.trim()) return;
-        await jsonRequest(`/chats/${activeChat.id}`, {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ title: title.trim() }),
-        });
-        await loadChats();
-        await openChat(activeChat.id);
+        if (!title?.trim() || title.trim() === activeChat.title) return;
+        try {
+            const nextTitle = title.trim();
+            await jsonRequest(`/chats/${activeChat.id}`, {
+                method: "PATCH",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ title: nextTitle }),
+            });
+
+            // Title-only update. Never reload or replace the conversation messages.
+            setChats((current) =>
+                current.map((item) =>
+                    item.id === activeChat.id ? { ...item, title: nextTitle } : item
+                )
+            );
+            setActiveChat((current) =>
+                current ? { ...current, title: nextTitle } : current
+            );
+        } catch (err) {
+            setError(`Could not rename chat: ${err.message}`);
+        }
     };
 
     const renameChat = async (chat) => {
