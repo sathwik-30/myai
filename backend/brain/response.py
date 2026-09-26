@@ -90,8 +90,8 @@ def generate_response(message, context, knowledge, search_manager, user_id=None)
         identity_name = OWNER_NAME
         if user_id is not None:
             try:
-                from backend.chats.store import get_user
-                account = get_user(str(user_id))
+                from backend.chats.store import get_user_by_id
+                account = get_user_by_id(user_id)
                 identity_name = account.get("username") if account else OWNER_NAME
             except Exception:
                 identity_name = OWNER_NAME
