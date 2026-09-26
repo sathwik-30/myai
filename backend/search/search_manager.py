@@ -5,8 +5,8 @@ from backend.knowledge.resource_loader import search_resources
 
 
 class SearchManager:
-    def __init__(self):
-        self.memory = MemoryManager()
+    def __init__(self, user_id=None):
+        self.memory = MemoryManager(user_id=user_id)
 
     def process(self, question, context=None):
         memory = self.memory.search(question)
@@ -20,9 +20,8 @@ class SearchManager:
         local_results = search_resources(question)
         if local_results:
             item = local_results[0]
-            answer = item["text"]
             return {
-                "answer": answer,
+                "answer": item["text"],
                 "source": "local_resource",
                 "resource": item["path"],
             }
