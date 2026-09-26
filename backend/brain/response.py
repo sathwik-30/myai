@@ -68,7 +68,7 @@ def _localize_answer(answer: str, language: str) -> str:
     return answer
 
 
-def generate_response(message, context, knowledge, search_manager):
+def generate_response(message, context, knowledge, search_manager, user_id=None):
     message = message.strip()
     language = detect_language(message)
 
@@ -85,7 +85,7 @@ def generate_response(message, context, knowledge, search_manager):
             "source": "system",
         }
 
-    answer = UNDERSTANDING.best_memory_answer(message, context)
+    answer = UNDERSTANDING.best_memory_answer(message, context, user_id)
     if answer:
         return {
             "answer": _localize_answer(answer, language),
