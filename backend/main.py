@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from backend.api.chat import router
-from backend.memory.semantic_memory import count as memory_count
+from backend.memory.semantic_memory import count as memory_count, list_memories, delete_memory
 
 app = FastAPI(
     title="Medha AI",
@@ -32,6 +32,21 @@ def home():
         "version": app.version,
     }
 
+
+
+@app.get("/api/memory")
+def get_memory(memory_type: str | None = None, limit: int = 100):
+    return {
+        "count": memory_count(),
+        "memories": list_memories(memory_type=memory_type, limit=limit),
+    }
+
+
+@app.delete("/api/memory/{memory_id}")
+def remove_memory(memory_id: int):
+    if not delete_memory(memory_id):
+        raise HTTPException(status_code=404, detail="Memory not found")
+    return {"deleted": True, "memory_id": memory_id}
 
 @app.get("/api/health")
 def health():
