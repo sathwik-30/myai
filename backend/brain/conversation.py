@@ -13,15 +13,20 @@ class ConversationEngine:
         self.memory = MemoryManager()
 
     def chat(self, message):
-        response = generate_response(
+        result = generate_response(
             message,
             self.context.get_messages(),
             self.knowledge,
             self.search_manager,
         )
 
-        # Every useful exchange becomes semantic memory.
-        # Future paraphrases can retrieve the same learned response.
+        if isinstance(result, dict):
+            response = result.get("answer", "")
+            source = result.get("source", "memory")
+        else:
+            response = str(result)
+            source = "memory"
+
         try:
             self.memory.learn_conversation(message, response)
         except Exception as error:
@@ -30,4 +35,10 @@ class ConversationEngine:
         self.context.add("user", message)
         self.context.add("assistant", response)
 
-        return response
+        return {
+            "response": response,
+            "source": source,
+        }
+
+    def history(self):
+        return self.context.get_messages()
