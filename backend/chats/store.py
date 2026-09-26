@@ -50,7 +50,7 @@ def create_chat(user_id, title="New chat"):
     init_chat_tables()
     now = _now()
     with _connect() as db:
-        cur = db.execute("INSERT INTO chats(user_id,title,created_at,updated_at) VALUES(?,?,?,?,?)",
+        cur = db.execute("INSERT INTO chats(user_id,title,created_at,updated_at) VALUES(?,?,?,?)",
                          (user_id, title[:120] or "New chat", now, now))
         db.commit()
         return cur.lastrowid
