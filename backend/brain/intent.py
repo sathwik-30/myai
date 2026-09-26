@@ -1,7 +1,7 @@
 import re
 from typing import Literal
 
-Intent = Literal["casual", "technical", "memory", "general"]
+Intent = Literal["casual", "technical", "memory", "personal", "general"]
 
 TECHNICAL_TERMS = {
     "api", "algorithm", "array", "backend", "bug", "code", "coding", "compiler",
@@ -33,6 +33,13 @@ def classify(message: str) -> Intent:
 
     if any(cue in text for cue in MEMORY_CUES):
         return "memory"
+
+    if (
+        re.search(r"\bmy\s+(name|project|goal|preference|favorite|favourite|skill|role|college|course|branch)\b", text)
+        or re.search(r"\bi\s+(prefer|like|love|hate|use|work|study|want|need|am|have)\b", text)
+        or re.search(r"\bcall me\b", text)
+    ):
+        return "personal"
 
     if any(text == start or text.startswith(start + " ") for start in CASUAL_STARTS):
         return "casual"
