@@ -297,6 +297,36 @@ def delete_memory(memory_id: int) -> bool:
         db.commit()
         return cursor.rowcount > 0
 
+def sync_memory_file() -> None:
+    _prepare()
+    memory_file = os.path.join(os.path.dirname(DATA_DIR), "MEMORY.md")
+
+    with _connect() as db:
+        rows = db.execute(
+            """SELECT id, memory_type, importance, text, answer
+               FROM memories
+               ORDER BY importance DESC, id DESC"""
+        ).fetchall()
+
+    lines = [
+        "# MEDHA MEMORY",
+        "",
+        "Human-readable mirror of persistent memory.",
+        "SQLite database remains the runtime source of truth.",
+        "",
+    ]
+
+    for row in rows:
+        lines.append(
+            f"- [{row['id']}] {row['memory_type']} | importance={row['importance']} | "
+            f"{row['text']} -> {row['answer']}"
+        )
+
+    temp_file = memory_file + ".tmp"
+    with open(temp_file, "w", encoding="utf-8") as file:
+        file.write("\n".join(lines) + "\n")
+    os.replace(temp_file, memory_file)
+
 def count() -> int:
     _prepare()
     with _connect() as db:
