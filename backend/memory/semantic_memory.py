@@ -321,7 +321,7 @@ def delete_memory(memory_id: int, user_id: int | None = None) -> bool:
     _prepare()
     with _connect() as db:
         cursor = db.execute(
-            "DELETE FROM memories WHERE id = ? AND (user_id IS NULL OR user_id = ?)",
+            "DELETE FROM memories WHERE id = ? AND user_id = ?",
             (int(memory_id), user_id),
         )
         db.commit()
