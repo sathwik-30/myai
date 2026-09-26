@@ -19,14 +19,15 @@ class ConversationEngine:
     knowledge component cannot prevent simple local-memory responses.
     """
 
-    def __init__(self):
+    def __init__(self, user_id=None):
+        self.user_id = user_id
         self.context = ConversationContext()
         self.search_manager = None
-        self.memory = MemoryManager()
+        self.memory = MemoryManager(user_id=user_id)
 
     def _get_search_manager(self):
         if self.search_manager is None:
-            self.search_manager = SearchManager()
+            self.search_manager = SearchManager(user_id=self.user_id)
         return self.search_manager
 
     @staticmethod
@@ -57,6 +58,7 @@ class ConversationEngine:
                 history,
                 None,
                 self._get_search_manager(),
+                self.user_id,
             )
 
             if isinstance(result, dict):
