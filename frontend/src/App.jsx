@@ -96,6 +96,7 @@ function App() {
     const [error, setError] = useState("");
     const textareaRef = useRef(null);
     const messagesEndRef = useRef(null);
+    const activeChatIdRef = useRef(null);
 
     const loadChats = async () => {
         const data = await jsonRequest("/chats");
@@ -142,9 +143,14 @@ function App() {
         }
     };
 
+    useEffect(() => {
+        activeChatIdRef.current = activeChat?.id ?? null;
+    }, [activeChat]);
+
     const sendMessage = async () => {
         const message = input.trim();
         if (!message || loading || !activeChat) return;
+        const sentChatId = activeChat.id;
         setInput("");
         setLoading(true);
         setError("");
@@ -157,19 +163,23 @@ function App() {
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ message, chat_id: activeChat.id }),
             });
-            setMessages((prev) => [...prev, {
-                role: "assistant",
-                message: data.response,
-                source: data.source,
-                latency_ms: data.latency_ms,
-            }]);
+            if (activeChatIdRef.current === sentChatId) {
+                setMessages((prev) => [...prev, {
+                    role: "assistant",
+                    message: data.response,
+                    source: data.source,
+                    latency_ms: data.latency_ms,
+                }]);
+            }
             await loadChats();
             setActiveChat((current) => current ? { ...current, updated_at: new Date().toISOString() } : current);
         } catch (err) {
             // Do not create a fake assistant message for a failed request.
             // The backend persists the user turn, and the next reload will show
             // exactly what is actually stored.
-            setError(err.message);
+            if (activeChatIdRef.current === sentChatId) {
+                setError(err.message);
+            }
         } finally {
             setLoading(false);
             setTimeout(() => textareaRef.current?.focus(), 0);
