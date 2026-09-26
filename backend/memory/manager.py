@@ -4,13 +4,30 @@ from backend.memory.semantic_memory import remember
 
 
 class MemoryManager:
+    def __init__(self, user_id=None):
+        self.user_id = user_id
+
     def search(self, question):
-        semantic_results = semantic_search(question, top_k=1, min_score=0.40)
+        semantic_results = semantic_search(
+            question,
+            top_k=1,
+            min_score=0.40,
+            user_id=self.user_id,
+        )
         if semantic_results:
             return semantic_results[0]
+        # Legacy knowledge store is global and is retained only as a
+        # compatibility fallback for old non-personal data.
         return search_memory(question)
 
-    def learn(self, question, answer, source, importance=3, memory_type="knowledge"):
+    def learn(
+        self,
+        question,
+        answer,
+        source,
+        importance=3,
+        memory_type="knowledge",
+    ):
         if not question or not answer:
             return False
 
@@ -21,6 +38,7 @@ class MemoryManager:
             source=source,
             metadata={"importance": importance},
             importance=importance,
+            user_id=self.user_id,
         )
         return True
 
