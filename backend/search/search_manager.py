@@ -1,6 +1,7 @@
 from backend.memory.manager import MemoryManager
 from backend.search.wikipedia import search_wikipedia
 from backend.search.web import search_web
+from backend.knowledge.resource_loader import search_resources
 
 
 class SearchManager:
@@ -14,6 +15,16 @@ class SearchManager:
             return {
                 "answer": memory["answer"],
                 "source": memory.get("source", "memory"),
+            }
+
+        local_results = search_resources(question)
+        if local_results:
+            item = local_results[0]
+            answer = item["text"]
+            return {
+                "answer": answer,
+                "source": "local_resource",
+                "resource": item["path"],
             }
 
         wikipedia_results = search_wikipedia(question)
