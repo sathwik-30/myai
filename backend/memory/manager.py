@@ -1,4 +1,3 @@
-from backend.memory.knowledge_store import search_memory
 from backend.memory.semantic_memory import search as semantic_search
 from backend.memory.semantic_memory import remember
 
@@ -8,17 +7,13 @@ class MemoryManager:
         self.user_id = user_id
 
     def search(self, question):
-        semantic_results = semantic_search(
+        results = semantic_search(
             question,
             top_k=1,
             min_score=0.40,
             user_id=self.user_id,
         )
-        if semantic_results:
-            return semantic_results[0]
-        # Legacy knowledge store is global and is retained only as a
-        # compatibility fallback for old non-personal data.
-        return search_memory(question)
+        return results[0] if results else None
 
     def learn(
         self,
