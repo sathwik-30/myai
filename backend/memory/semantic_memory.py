@@ -42,15 +42,18 @@ _STOP_WORDS = {
 }
 
 def _normalize(text: str) -> str:
-    text = str(text or "").lower()
-    text = re.sub(r"[^a-z0-9\s]", " ", text)
-    words = [word for word in text.split() if word not in _STOP_WORDS]
+    value = str(text or "").lower()
+    # Keep Unicode letters so Telugu and other scripts are not discarded.
+    value = re.sub(r"[^\w\s]", " ", value, flags=re.UNICODE)
+    words = [word for word in value.split() if word not in _STOP_WORDS]
     return " ".join(words)
 
 def _connect() -> sqlite3.Connection:
     os.makedirs(DATA_DIR, exist_ok=True)
-    connection = sqlite3.connect(DB_PATH)
+    connection = sqlite3.connect(DB_PATH, timeout=15.0)
     connection.row_factory = sqlite3.Row
+    connection.execute("PRAGMA busy_timeout=15000")
+    connection.execute("PRAGMA journal_mode=WAL")
     return connection
 
 def _init() -> None:
@@ -58,6 +61,7 @@ def _init() -> None:
         db.execute("""
             CREATE TABLE IF NOT EXISTS memories (
                 id INTEGER PRIMARY KEY,
+                user_id INTEGER,
                 text TEXT NOT NULL,
                 answer TEXT NOT NULL,
                 memory_type TEXT NOT NULL,
@@ -67,31 +71,26 @@ def _init() -> None:
                 updated_at TEXT
             )
         """)
-        db.execute(
-            "CREATE INDEX IF NOT EXISTS idx_memory_type ON memories(memory_type)"
-        )
-        db.execute(
-            "CREATE INDEX IF NOT EXISTS idx_memory_source ON memories(source)"
-        )
+        columns = {row["name"] for row in db.execute("PRAGMA table_info(memories)").fetchall()}
+        if "user_id" not in columns:
+            db.execute("ALTER TABLE memories ADD COLUMN user_id INTEGER")
+        db.execute("CREATE INDEX IF NOT EXISTS idx_memory_user ON memories(user_id)")
+        db.execute("CREATE INDEX IF NOT EXISTS idx_memory_type ON memories(memory_type)")
+        db.execute("CREATE INDEX IF NOT EXISTS idx_memory_source ON memories(source)")
         db.commit()
 
 def _compact(text: str, limit: int = 900) -> str:
     text = re.sub(r"\s+", " ", str(text or "")).strip()
     if len(text) <= limit:
         return text
-
     sentences = re.split(r"(?<=[.!?])\s+", text)
     kept: List[str] = []
     for sentence in sentences:
         sentence = sentence.strip()
-        if not sentence:
-            continue
-        if sentence in kept:
-            continue
-        kept.append(sentence)
+        if sentence and sentence not in kept:
+            kept.append(sentence)
         if len(" ".join(kept)) >= limit:
             break
-
     result = " ".join(kept)
     return result[:limit].rsplit(" ", 1)[0] + "..." if len(result) > limit else result
 
@@ -99,16 +98,13 @@ def _migrate_legacy() -> None:
     _init()
     if not os.path.exists(LEGACY_JSON_PATH):
         return
-
     try:
         with open(LEGACY_JSON_PATH, "r", encoding="utf-8") as file:
             legacy = json.load(file)
     except (OSError, json.JSONDecodeError):
         return
-
     if not isinstance(legacy, list):
         return
-
     for item in legacy:
         if not isinstance(item, dict):
             continue
@@ -122,7 +118,6 @@ def _migrate_legacy() -> None:
                 source=item.get("source", "legacy"),
                 importance=int((item.get("metadata") or {}).get("importance", 3)),
             )
-
     try:
         os.remove(LEGACY_JSON_PATH)
     except OSError:
@@ -134,15 +129,16 @@ def _ensure_defaults() -> None:
         for text, answer, memory_type in DEFAULT_MEMORIES:
             normalized = _normalize(text)
             exists = db.execute(
-                "SELECT 1 FROM memories WHERE text = ? LIMIT 1",
+                "SELECT 1 FROM memories WHERE user_id IS NULL AND text = ? LIMIT 1",
                 (normalized,),
             ).fetchone()
             if not exists:
                 db.execute(
                     """INSERT INTO memories
-                    (text, answer, memory_type, source, importance, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?)""",
+                       (user_id, text, answer, memory_type, source, importance, created_at)
+                       VALUES (?, ?, ?, ?, ?, ?, ?)""",
                     (
+                        None,
                         normalized,
                         _compact(answer),
                         memory_type,
@@ -165,73 +161,63 @@ def remember(
     source: str = "memory",
     metadata: Optional[Dict[str, Any]] = None,
     importance: int = 3,
+    user_id: int | None = None,
 ) -> None:
     if not text or not answer:
         return
-
     _prepare()
     normalized = _normalize(text)
+    if not normalized:
+        return
     compact_answer = _compact(answer)
-    importance = max(1, min(5, int(
-        (metadata or {}).get("importance", importance)
-    )))
-
+    importance = max(1, min(5, int((metadata or {}).get("importance", importance))))
     with _connect() as db:
         existing = db.execute(
-            "SELECT id FROM memories WHERE text = ? LIMIT 1",
-            (normalized,),
+            """SELECT id FROM memories
+               WHERE text = ? AND (user_id = ? OR (user_id IS NULL AND ? IS NULL))
+               LIMIT 1""",
+            (normalized, user_id, user_id),
         ).fetchone()
-
         now = datetime.now(timezone.utc).isoformat()
         if existing:
             db.execute(
                 """UPDATE memories
                    SET answer=?, memory_type=?, source=?, importance=?, updated_at=?
                    WHERE id=?""",
-                (
-                    compact_answer,
-                    memory_type,
-                    source,
-                    importance,
-                    now,
-                    existing["id"],
-                ),
+                (compact_answer, memory_type, source, importance, now, existing["id"]),
             )
         else:
             db.execute(
                 """INSERT INTO memories
-                   (text, answer, memory_type, source, importance, created_at)
-                   VALUES (?, ?, ?, ?, ?, ?)""",
-                (
-                    normalized,
-                    compact_answer,
-                    memory_type,
-                    source,
-                    importance,
-                    now,
-                ),
+                   (user_id, text, answer, memory_type, source, importance, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (user_id, normalized, compact_answer, memory_type, source, importance, now),
             )
         db.commit()
     sync_memory_file()
 
-def search(text: str, top_k: int = 3, min_score: float = 0.30) -> List[Dict[str, Any]]:
+def search(
+    text: str,
+    top_k: int = 3,
+    min_score: float = 0.30,
+    user_id: int | None = None,
+) -> List[Dict[str, Any]]:
     if not str(text or "").strip():
         return []
-
     _prepare()
-    with _connect() as db:
-        rows = db.execute(
-            "SELECT * FROM memories ORDER BY importance DESC, id DESC"
-        ).fetchall()
-
-    if not rows:
-        return []
-
-    documents = [row["text"] for row in rows]
     query = _normalize(text)
     if not query:
         return []
-
+    with _connect() as db:
+        rows = db.execute(
+            """SELECT * FROM memories
+               WHERE user_id IS NULL OR user_id = ?
+               ORDER BY importance DESC, id DESC""",
+            (user_id,),
+        ).fetchall()
+    if not rows:
+        return []
+    documents = [row["text"] for row in rows]
     try:
         vectorizer = TfidfVectorizer(
             analyzer="char_wb",
@@ -243,13 +229,11 @@ def search(text: str, top_k: int = 3, min_score: float = 0.30) -> List[Dict[str,
         scores = cosine_similarity(matrix[-1], matrix[:-1])[0]
     except ValueError:
         return []
-
     ranked = sorted(
         zip(rows, scores),
         key=lambda pair: (float(pair[1]), pair[0]["importance"]),
         reverse=True,
     )
-
     results = []
     for row, score in ranked[:top_k]:
         score = float(score)
@@ -263,38 +247,40 @@ def search(text: str, top_k: int = 3, min_score: float = 0.30) -> List[Dict[str,
 def list_memories(
     memory_type: Optional[str] = None,
     limit: int = 100,
+    user_id: int | None = None,
 ) -> List[Dict[str, Any]]:
     _prepare()
     limit = max(1, min(500, int(limit)))
-
     with _connect() as db:
         if memory_type:
             rows = db.execute(
-                """SELECT id, text, answer, memory_type, source,
+                """SELECT id, user_id, text, answer, memory_type, source,
                           importance, created_at, updated_at
                    FROM memories
-                   WHERE memory_type = ?
+                   WHERE memory_type = ? AND (user_id IS NULL OR user_id = ?)
                    ORDER BY importance DESC, id DESC
                    LIMIT ?""",
-                (memory_type, limit),
+                (memory_type, user_id, limit),
             ).fetchall()
         else:
             rows = db.execute(
-                """SELECT id, text, answer, memory_type, source,
+                """SELECT id, user_id, text, answer, memory_type, source,
                           importance, created_at, updated_at
                    FROM memories
+                   WHERE user_id IS NULL OR user_id = ?
                    ORDER BY importance DESC, id DESC
                    LIMIT ?""",
-                (limit,),
+                (user_id, limit),
             ).fetchall()
-
     return [dict(row) for row in rows]
 
-
-def delete_memory(memory_id: int) -> bool:
+def delete_memory(memory_id: int, user_id: int | None = None) -> bool:
     _prepare()
     with _connect() as db:
-        cursor = db.execute("DELETE FROM memories WHERE id = ?", (int(memory_id),))
+        cursor = db.execute(
+            "DELETE FROM memories WHERE id = ? AND (user_id IS NULL OR user_id = ?)",
+            (int(memory_id), user_id),
+        )
         db.commit()
     sync_memory_file()
     return cursor.rowcount > 0
@@ -302,14 +288,12 @@ def delete_memory(memory_id: int) -> bool:
 def sync_memory_file() -> None:
     _init()
     memory_file = os.path.join(os.path.dirname(DATA_DIR), "MEMORY.md")
-
     with _connect() as db:
         rows = db.execute(
-            """SELECT id, memory_type, importance, text, answer
+            """SELECT id, user_id, memory_type, importance, text, answer
                FROM memories
                ORDER BY importance DESC, id DESC"""
         ).fetchall()
-
     lines = [
         "# MEDHA MEMORY",
         "",
@@ -317,13 +301,12 @@ def sync_memory_file() -> None:
         "SQLite database remains the runtime source of truth.",
         "",
     ]
-
     for row in rows:
+        owner = "global" if row["user_id"] is None else f"user={row['user_id']}"
         lines.append(
-            f"- [{row['id']}] {row['memory_type']} | importance={row['importance']} | "
+            f"- [{row['id']}] {owner} | {row['memory_type']} | importance={row['importance']} | "
             f"{row['text']} -> {row['answer']}"
         )
-
     temp_file = memory_file + ".tmp"
     with open(temp_file, "w", encoding="utf-8") as file:
         file.write("\n".join(lines) + "\n")
