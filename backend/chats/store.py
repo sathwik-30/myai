@@ -77,7 +77,16 @@ def add_message(user_id, chat_id, role, message, source="", latency_ms=0):
             return False
         db.execute("INSERT INTO chat_messages(chat_id,role,message,source,latency_ms,created_at) VALUES(?,?,?,?,?,?)",
                    (chat_id, role, message, source, latency_ms, now))
-        db.execute("UPDATE chats SET updated_at=? WHERE id=?", (now, chat_id))
+        db.execute(
+            """UPDATE chats
+               SET updated_at=?,
+                   title=CASE
+                       WHEN title='New chat' AND role='user' THEN substr(message,1,80)
+                       ELSE title
+                   END
+               WHERE id=?""",
+            (now, chat_id),
+        )
         db.commit()
         return True
 
