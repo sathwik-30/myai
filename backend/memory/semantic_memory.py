@@ -93,26 +93,74 @@ def _migrate_legacy() -> None:
     _init()
     if not os.path.exists(LEGACY_JSON_PATH):
         return
+
     try:
         with open(LEGACY_JSON_PATH, "r", encoding="utf-8") as file:
             legacy = json.load(file)
     except (OSError, json.JSONDecodeError):
         return
+
     if not isinstance(legacy, list):
         return
-    for item in legacy:
-        if not isinstance(item, dict):
-            continue
-        text = item.get("text")
-        answer = item.get("answer")
-        if text and answer:
-            remember(
-                text,
-                answer,
-                memory_type=item.get("memory_type", "knowledge"),
-                source=item.get("source", "legacy"),
-                importance=int((item.get("metadata") or {}).get("importance", 3)),
+
+    # Insert directly instead of calling remember(), because remember()
+    # invokes _prepare() and would recursively re-enter this migration.
+    with _connect() as db:
+        now = datetime.now(timezone.utc).isoformat()
+        for item in legacy:
+            if not isinstance(item, dict):
+                continue
+            text = item.get("text")
+            answer = item.get("answer")
+            if not text or not answer:
+                continue
+
+            normalized = _normalize(text)
+            if not normalized:
+                continue
+
+            importance = max(
+                1,
+                min(5, int((item.get("metadata") or {}).get("importance", 3))),
             )
+            existing = db.execute(
+                """SELECT id FROM memories
+                   WHERE user_id IS NULL AND text = ?
+                   LIMIT 1""",
+                (normalized,),
+            ).fetchone()
+
+            if existing:
+                db.execute(
+                    """UPDATE memories
+                       SET answer=?, memory_type=?, source=?, importance=?, updated_at=?
+                       WHERE id=?""",
+                    (
+                        _compact(answer),
+                        item.get("memory_type", "knowledge"),
+                        item.get("source", "legacy"),
+                        importance,
+                        now,
+                        existing["id"],
+                    ),
+                )
+            else:
+                db.execute(
+                    """INSERT INTO memories
+                       (user_id, text, answer, memory_type, source, importance, created_at)
+                       VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                    (
+                        None,
+                        normalized,
+                        _compact(answer),
+                        item.get("memory_type", "knowledge"),
+                        item.get("source", "legacy"),
+                        importance,
+                        item.get("created_at") or now,
+                    ),
+                )
+        db.commit()
+
     try:
         os.remove(LEGACY_JSON_PATH)
     except OSError:
