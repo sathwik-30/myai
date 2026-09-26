@@ -326,6 +326,7 @@ def search(
         reverse=True,
     )
     results = []
+    used_ids = []
     for row, score in ranked[:top_k]:
         score = float(score)
         if score < min_score:
@@ -333,6 +334,26 @@ def search(
         result = dict(row)
         result["score"] = round(score, 4)
         results.append(result)
+        used_ids.append(int(row["id"]))
+
+    if used_ids:
+        now = datetime.now(timezone.utc).isoformat()
+        with _connect() as db:
+            placeholders = ",".join("?" for _ in used_ids)
+            params = [now, *used_ids]
+            user_clause = "(user_id IS NULL OR user_id=?)"
+            if user_id is not None:
+                user_clause = "(user_id IS NULL OR user_id=?)"
+                params.append(user_id)
+            else:
+                user_clause = "user_id IS NULL"
+            db.execute(
+                f"UPDATE memories SET last_used_at=? "
+                f"WHERE id IN ({placeholders}) AND {user_clause}",
+                params,
+            )
+            db.commit()
+
     return results
 
 
