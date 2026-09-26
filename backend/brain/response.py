@@ -1,4 +1,5 @@
 from backend.brain.identity import OWNER_NAME
+from backend.brain.intent import classify
 from backend.brain.understanding import LanguageUnderstanding
 from backend.memory.semantic_memory import remember
 
@@ -21,25 +22,37 @@ def generate_response(message, context, knowledge, search_manager):
             "source": "memory",
         }
 
+    intent = classify(message)
+
+    if intent in {"casual", "memory"}:
+        if intent == "memory":
+            return {
+                "answer": (
+                    "I don't know that yet. Tell me the important detail and "
+                    "I'll remember it for future conversations."
+                ),
+                "source": "memory_request",
+            }
+
+        return {
+            "answer": (
+                "I don't know that yet. Tell me the answer and I'll remember "
+                "the useful part for future conversations."
+            ),
+            "source": "ask_user",
+        }
+
     result = search_manager.process(message, context)
 
     if result and result.get("answer"):
-        answer = result["answer"]
-        remember(
-            message,
-            answer,
-            memory_type="knowledge",
-            source=result.get("source", "search"),
-        )
         return {
-            "answer": answer,
+            "answer": result["answer"],
             "source": result.get("source", "search"),
         }
 
     return {
         "answer": (
-            f"I don't have enough learned information to answer that yet, "
-            f"{OWNER_NAME}."
+            f"I couldn't find reliable information about that yet, {OWNER_NAME}."
         ),
         "source": "fallback",
     }
