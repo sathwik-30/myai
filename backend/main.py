@@ -1,9 +1,10 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 from backend.api.chat import router
 from backend.api.auth import router as auth_router
 from backend.api.chats import router as chats_router
+from backend.auth.dependencies import current_user
 from backend.chats.store import init_chat_tables
 from backend.memory.semantic_memory import count as memory_count, list_memories, delete_memory
 
@@ -41,16 +42,17 @@ def home():
 
 
 @app.get("/api/memory")
-def get_memory(memory_type: str | None = None, limit: int = 100):
+def get_memory(memory_type: str | None = None, limit: int = 100, user=Depends(current_user)):
+    user_id = int(user["sub"])
     return {
         "count": memory_count(),
-        "memories": list_memories(memory_type=memory_type, limit=limit),
+        "memories": list_memories(memory_type=memory_type, limit=limit, user_id=user_id),
     }
 
 
 @app.delete("/api/memory/{memory_id}")
-def remove_memory(memory_id: int):
-    if not delete_memory(memory_id):
+def remove_memory(memory_id: int, user=Depends(current_user)):
+    if not delete_memory(memory_id, user_id=int(user["sub"])):
         raise HTTPException(status_code=404, detail="Memory not found")
     return {"deleted": True, "memory_id": memory_id}
 
