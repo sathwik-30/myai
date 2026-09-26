@@ -2,6 +2,7 @@ import json
 import os
 import re
 import sqlite3
+from calendar import monthrange
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
@@ -12,6 +13,7 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(BASE_DIR, "data")
 DB_PATH = os.path.join(DATA_DIR, "medha_memory.db")
 LEGACY_JSON_PATH = os.path.join(DATA_DIR, "semantic_memory.json")
+MEMORY_RETENTION_MONTHS = 6
 
 DEFAULT_MEMORIES = [
     ("Hi", "Hi Sathwik. I'm here. How are you?", "casual"),
@@ -19,8 +21,8 @@ DEFAULT_MEMORIES = [
     ("Hey Medha", "Hey Sathwik. I'm here.", "casual"),
     ("Good morning", "Good morning, Sathwik. What are we working on?", "casual"),
     ("How are you?", "I'm functioning normally and ready to talk with you.", "casual"),
-    ("I am fine, what about you?", "I'm functioning normally too. I'm here and ready to help you, Sathwik.", "casual"),
-    ("wt abt u", "I'm functioning normally too. I'm here and ready to help you, Sathwik.", "casual"),
+    ("I am fine, what about you?", "I'm functioning normally too. I'm here and ready to help you.", "casual"),
+    ("wt abt u", "I'm functioning normally too. I'm here and ready to help you.", "casual"),
     ("What are you doing?", "I'm here, processing what you need and ready to help.", "casual"),
     ("Thanks", "You're welcome.", "casual"),
     ("Thank you", "You're welcome.", "casual"),
@@ -36,12 +38,13 @@ _STOP_WORDS = {
     "can", "could", "would", "should", "do", "does", "did", "please",
 }
 
+
 def _normalize(text: str) -> str:
     value = str(text or "").lower()
-    # Keep Unicode letters so Telugu and other scripts are not discarded.
     value = re.sub(r"[^\w\s]", " ", value, flags=re.UNICODE)
     words = [word for word in value.split() if word not in _STOP_WORDS]
     return " ".join(words)
+
 
 def _connect() -> sqlite3.Connection:
     os.makedirs(DATA_DIR, exist_ok=True)
@@ -50,6 +53,15 @@ def _connect() -> sqlite3.Connection:
     connection.execute("PRAGMA busy_timeout=15000")
     connection.execute("PRAGMA journal_mode=WAL")
     return connection
+
+
+def _months_before(value: datetime, months: int) -> datetime:
+    month_index = value.year * 12 + (value.month - 1) - months
+    year, month_zero = divmod(month_index, 12)
+    month = month_zero + 1
+    day = min(value.day, monthrange(year, month)[1])
+    return value.replace(year=year, month=month, day=day)
+
 
 def _init() -> None:
     with _connect() as db:
@@ -63,16 +75,25 @@ def _init() -> None:
                 source TEXT NOT NULL,
                 importance INTEGER NOT NULL DEFAULT 3,
                 created_at TEXT NOT NULL,
-                updated_at TEXT
+                updated_at TEXT,
+                last_used_at TEXT
             )
         """)
         columns = {row["name"] for row in db.execute("PRAGMA table_info(memories)").fetchall()}
         if "user_id" not in columns:
             db.execute("ALTER TABLE memories ADD COLUMN user_id INTEGER")
+        if "last_used_at" not in columns:
+            db.execute("ALTER TABLE memories ADD COLUMN last_used_at TEXT")
+        db.execute(
+            "UPDATE memories SET last_used_at=COALESCE(updated_at, created_at) "
+            "WHERE last_used_at IS NULL"
+        )
         db.execute("CREATE INDEX IF NOT EXISTS idx_memory_user ON memories(user_id)")
         db.execute("CREATE INDEX IF NOT EXISTS idx_memory_type ON memories(memory_type)")
         db.execute("CREATE INDEX IF NOT EXISTS idx_memory_source ON memories(source)")
+        db.execute("CREATE INDEX IF NOT EXISTS idx_memory_last_used ON memories(last_used_at)")
         db.commit()
+
 
 def _compact(text: str, limit: int = 900) -> str:
     text = re.sub(r"\s+", " ", str(text or "")).strip()
@@ -89,6 +110,7 @@ def _compact(text: str, limit: int = 900) -> str:
     result = " ".join(kept)
     return result[:limit].rsplit(" ", 1)[0] + "..." if len(result) > limit else result
 
+
 def _migrate_legacy() -> None:
     _init()
     if not os.path.exists(LEGACY_JSON_PATH):
@@ -103,8 +125,6 @@ def _migrate_legacy() -> None:
     if not isinstance(legacy, list):
         return
 
-    # Insert directly instead of calling remember(), because remember()
-    # invokes _prepare() and would recursively re-enter this migration.
     with _connect() as db:
         now = datetime.now(timezone.utc).isoformat()
         for item in legacy:
@@ -123,6 +143,7 @@ def _migrate_legacy() -> None:
                 1,
                 min(5, int((item.get("metadata") or {}).get("importance", 3))),
             )
+            created_at = item.get("created_at") or now
             existing = db.execute(
                 """SELECT id FROM memories
                    WHERE user_id IS NULL AND text = ?
@@ -133,7 +154,8 @@ def _migrate_legacy() -> None:
             if existing:
                 db.execute(
                     """UPDATE memories
-                       SET answer=?, memory_type=?, source=?, importance=?, updated_at=?
+                       SET answer=?, memory_type=?, source=?, importance=?,
+                           updated_at=?, last_used_at=COALESCE(last_used_at, ?)
                        WHERE id=?""",
                     (
                         _compact(answer),
@@ -141,14 +163,16 @@ def _migrate_legacy() -> None:
                         item.get("source", "legacy"),
                         importance,
                         now,
+                        created_at,
                         existing["id"],
                     ),
                 )
             else:
                 db.execute(
                     """INSERT INTO memories
-                       (user_id, text, answer, memory_type, source, importance, created_at)
-                       VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                       (user_id, text, answer, memory_type, source, importance,
+                        created_at, last_used_at)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
                     (
                         None,
                         normalized,
@@ -156,7 +180,8 @@ def _migrate_legacy() -> None:
                         item.get("memory_type", "knowledge"),
                         item.get("source", "legacy"),
                         importance,
-                        item.get("created_at") or now,
+                        created_at,
+                        created_at,
                     ),
                 )
         db.commit()
@@ -165,6 +190,7 @@ def _migrate_legacy() -> None:
         os.remove(LEGACY_JSON_PATH)
     except OSError:
         pass
+
 
 def _ensure_defaults() -> None:
     _init()
@@ -176,10 +202,12 @@ def _ensure_defaults() -> None:
                 (normalized,),
             ).fetchone()
             if not exists:
+                now = datetime.now(timezone.utc).isoformat()
                 db.execute(
                     """INSERT INTO memories
-                       (user_id, text, answer, memory_type, source, importance, created_at)
-                       VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                       (user_id, text, answer, memory_type, source, importance,
+                        created_at, last_used_at)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
                     (
                         None,
                         normalized,
@@ -187,15 +215,32 @@ def _ensure_defaults() -> None:
                         memory_type,
                         "built_in_memory",
                         5,
-                        datetime.now(timezone.utc).isoformat(),
+                        now,
+                        now,
                     ),
                 )
         db.commit()
+
+
+def _cleanup_expired() -> None:
+    cutoff = _months_before(datetime.now(timezone.utc), MEMORY_RETENTION_MONTHS).isoformat()
+    with _connect() as db:
+        db.execute(
+            """DELETE FROM memories
+               WHERE user_id IS NOT NULL
+                 AND last_used_at IS NOT NULL
+                 AND last_used_at < ?""",
+            (cutoff,),
+        )
+        db.commit()
+
 
 def _prepare() -> None:
     _init()
     _migrate_legacy()
     _ensure_defaults()
+    _cleanup_expired()
+
 
 def remember(
     text: str,
@@ -225,19 +270,22 @@ def remember(
         if existing:
             db.execute(
                 """UPDATE memories
-                   SET answer=?, memory_type=?, source=?, importance=?, updated_at=?
+                   SET answer=?, memory_type=?, source=?, importance=?,
+                       updated_at=?, last_used_at=?
                    WHERE id=?""",
-                (compact_answer, memory_type, source, importance, now, existing["id"]),
+                (compact_answer, memory_type, source, importance, now, now, existing["id"]),
             )
         else:
             db.execute(
                 """INSERT INTO memories
-                   (user_id, text, answer, memory_type, source, importance, created_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
-                (user_id, normalized, compact_answer, memory_type, source, importance, now),
+                   (user_id, text, answer, memory_type, source, importance,
+                    created_at, last_used_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                (user_id, normalized, compact_answer, memory_type, source, importance, now, now),
             )
         db.commit()
     sync_memory_file()
+
 
 def search(
     text: str,
@@ -287,6 +335,21 @@ def search(
         results.append(result)
     return results
 
+
+def touch_memory(memory_id: int, user_id: int | None = None) -> bool:
+    _prepare()
+    now = datetime.now(timezone.utc).isoformat()
+    with _connect() as db:
+        cursor = db.execute(
+            """UPDATE memories
+               SET last_used_at=?
+               WHERE id=? AND (user_id=? OR user_id IS NULL)""",
+            (now, int(memory_id), user_id),
+        )
+        db.commit()
+    return cursor.rowcount > 0
+
+
 def list_memories(
     memory_type: Optional[str] = None,
     limit: int = 100,
@@ -298,7 +361,7 @@ def list_memories(
         if memory_type:
             rows = db.execute(
                 """SELECT id, user_id, text, answer, memory_type, source,
-                          importance, created_at, updated_at
+                          importance, created_at, updated_at, last_used_at
                    FROM memories
                    WHERE memory_type = ? AND (user_id IS NULL OR user_id = ?)
                    ORDER BY importance DESC, id DESC
@@ -308,7 +371,7 @@ def list_memories(
         else:
             rows = db.execute(
                 """SELECT id, user_id, text, answer, memory_type, source,
-                          importance, created_at, updated_at
+                          importance, created_at, updated_at, last_used_at
                    FROM memories
                    WHERE user_id IS NULL OR user_id = ?
                    ORDER BY importance DESC, id DESC
@@ -316,6 +379,7 @@ def list_memories(
                 (user_id, limit),
             ).fetchall()
     return [dict(row) for row in rows]
+
 
 def delete_memory(memory_id: int, user_id: int | None = None) -> bool:
     _prepare()
@@ -328,12 +392,13 @@ def delete_memory(memory_id: int, user_id: int | None = None) -> bool:
     sync_memory_file()
     return cursor.rowcount > 0
 
+
 def sync_memory_file() -> None:
     _init()
     memory_file = os.path.join(os.path.dirname(DATA_DIR), "MEMORY.md")
     with _connect() as db:
         rows = db.execute(
-            """SELECT id, user_id, memory_type, importance, text, answer
+            """SELECT id, user_id, memory_type, importance, text, answer, last_used_at
                FROM memories
                ORDER BY importance DESC, id DESC"""
         ).fetchall()
@@ -342,23 +407,26 @@ def sync_memory_file() -> None:
         "",
         "Human-readable mirror of persistent memory.",
         "SQLite database remains the runtime source of truth.",
+        f"User memories expire after {MEMORY_RETENTION_MONTHS} months without use.",
         "",
     ]
     for row in rows:
         owner = "global" if row["user_id"] is None else f"user={row['user_id']}"
         lines.append(
             f"- [{row['id']}] {owner} | {row['memory_type']} | importance={row['importance']} | "
-            f"{row['text']} -> {row['answer']}"
+            f"last_used={row['last_used_at']} | {row['text']} -> {row['answer']}"
         )
     temp_file = memory_file + ".tmp"
     with open(temp_file, "w", encoding="utf-8") as file:
         file.write("\n".join(lines) + "\n")
     os.replace(temp_file, memory_file)
 
+
 def count() -> int:
     _prepare()
     with _connect() as db:
         return int(db.execute("SELECT COUNT(*) FROM memories").fetchone()[0])
+
 
 def recent(limit: int = 10) -> List[Dict[str, Any]]:
     _prepare()
