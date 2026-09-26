@@ -104,8 +104,6 @@ function App() {
 
         if (!activeChat && nextChats.length) {
             await openChat(nextChats[0].id);
-        } else if (!activeChat && !nextChats.length) {
-            await newChat();
         }
     };
 
@@ -117,16 +115,34 @@ function App() {
     };
 
     const newChat = async () => {
-        const data = await jsonRequest("/chats", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ title: "New chat" }),
-        });
-        const chatsData = await jsonRequest("/chats");
-        setChats(chatsData.chats || []);
-        await openChat(data.chat_id);
-        setInput("");
-        textareaRef.current?.focus();
+        setError("");
+
+        try {
+            // Always create a completely new, empty conversation.
+            const data = await jsonRequest("/chats", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ title: "New chat" }),
+            });
+
+            if (!data.chat_id) {
+                throw new Error("The backend did not return a chat ID.");
+            }
+
+            // Refresh the history so the new chat appears as a separate item.
+            const chatsData = await jsonRequest("/chats");
+            setChats(chatsData.chats || []);
+
+            // Open only the newly-created empty chat.
+            const newChatData = await jsonRequest(`/chats/${data.chat_id}`);
+            setActiveChat(newChatData.chat);
+            setMessages([]);
+            setInput("");
+
+            setTimeout(() => textareaRef.current?.focus(), 0);
+        } catch (err) {
+            setError(`Could not create chat: ${err.message}`);
+        }
     };
 
     const sendMessage = async () => {
