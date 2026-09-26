@@ -311,7 +311,7 @@ function App() {
                     )}
 
                     {messages.map((item) => (
-                        <div key={item.id || `${item.created_at}-${Math.random()}`} className={`message-row ${item.role}`}>
+                        <div key={item.id || `${item.created_at}-${item.role}-${item.message}`} className={`message-row ${item.role}`}>
                             {item.role === "assistant" && <div className="avatar">M</div>}
                             <div>
                                 <div className={`message ${item.error ? "error-message" : ""}`}>{item.message}</div>
