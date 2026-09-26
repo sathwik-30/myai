@@ -31,7 +31,7 @@ def chat(request: ChatRequest, user=Depends(current_user)):
     if history is None:
         raise HTTPException(status_code=404, detail="Chat not found")
 
-    engine = ConversationEngine()
+    engine = ConversationEngine(user_id=user_id)
     for item in history[-20:]:
         engine.context.add(item["role"], item["message"])
 
