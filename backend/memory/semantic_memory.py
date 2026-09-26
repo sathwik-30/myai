@@ -300,7 +300,7 @@ def delete_memory(memory_id: int) -> bool:
     return cursor.rowcount > 0
 
 def sync_memory_file() -> None:
-    _prepare()
+    _init()
     memory_file = os.path.join(os.path.dirname(DATA_DIR), "MEMORY.md")
 
     with _connect() as db:
