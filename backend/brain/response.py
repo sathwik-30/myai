@@ -2,12 +2,20 @@ from backend.brain.identity import OWNER_NAME
 from backend.brain.intent import classify
 from backend.brain.understanding import LanguageUnderstanding
 from backend.memory.semantic_memory import remember
+from backend.core.policy import apply_override
 
 UNDERSTANDING = LanguageUnderstanding()
 
 
 def generate_response(message, context, knowledge, search_manager):
     message = message.strip()
+
+    policy_check = apply_override("", message)
+    if not policy_check["allowed"]:
+        return {
+            "answer": policy_check["response"],
+            "source": "core_override",
+        }
 
     if not message:
         return {
