@@ -50,6 +50,13 @@ def get_user(username):
         row = db.execute("SELECT * FROM users WHERE username=?", (username,)).fetchone()
         return dict(row) if row else None
 
+def get_user_by_id(user_id):
+    init_chat_tables()
+    with _connect() as db:
+        row = db.execute("SELECT * FROM users WHERE id=?", (int(user_id),)).fetchone()
+        return dict(row) if row else None
+
+
 def create_chat(user_id, title="New chat"):
     init_chat_tables()
     now = _now()
