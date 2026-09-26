@@ -45,7 +45,7 @@ def home():
 def get_memory(memory_type: str | None = None, limit: int = 100, user=Depends(current_user)):
     user_id = int(user["sub"])
     return {
-        "count": memory_count(),
+        "count": len(list_memories(memory_type=memory_type, limit=limit, user_id=user_id)),
         "memories": list_memories(memory_type=memory_type, limit=limit, user_id=user_id),
     }
 
