@@ -8,6 +8,7 @@ function App() {
     const [input, setInput] = useState("");
     const [loading, setLoading] = useState(false);
     const [backendOnline, setBackendOnline] = useState(false);
+    const [backendError, setBackendError] = useState("");
     const textareaRef = useRef(null);
     const messagesEndRef = useRef(null);
 
@@ -19,6 +20,7 @@ function App() {
             );
 
             setBackendOnline(response.ok);
+            setBackendError(response.ok ? "" : `Backend returned HTTP ${response.status}`);
         } catch {
             setBackendOnline(false);
         }
@@ -60,11 +62,11 @@ function App() {
                 ...prev,
                 {
                     role: "assistant",
-                    message: data.response || "I received your message, but no response was returned.",
+                    message: data.response || "I received your message, but no response was returned.",\n                    source: data.source,\n                    latency: data.latency_ms,
                 },
             ]);
 
-            setBackendOnline(true);
+            setBackendOnline(true);\n            setBackendError("");
         } catch (error) {
             console.error("Medha backend error:", error);
             setBackendOnline(false);
