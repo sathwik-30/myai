@@ -212,6 +212,7 @@ def remember(
                 ),
             )
         db.commit()
+    sync_memory_file()
 
 def search(text: str, top_k: int = 3, min_score: float = 0.30) -> List[Dict[str, Any]]:
     if not str(text or "").strip():
@@ -295,7 +296,8 @@ def delete_memory(memory_id: int) -> bool:
     with _connect() as db:
         cursor = db.execute("DELETE FROM memories WHERE id = ?", (int(memory_id),))
         db.commit()
-        return cursor.rowcount > 0
+    sync_memory_file()
+    return cursor.rowcount > 0
 
 def sync_memory_file() -> None:
     _prepare()
