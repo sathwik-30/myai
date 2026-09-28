@@ -3,6 +3,8 @@ from backend.brain.intent import classify
 from backend.brain.understanding import LanguageUnderstanding
 from backend.brain.language import detect_language
 from backend.core.policy import apply_override
+from backend.core.system_prompt import build_system_prompt
+from backend.llm.router import router as model_router
 
 UNDERSTANDING = LanguageUnderstanding()
 
@@ -108,6 +110,46 @@ def generate_response(message, context, knowledge, search_manager, user_id=None)
         }
 
     intent = classify(message)
+
+    # General conversation is handled by the model layer when configured.
+    # Memory and retrieval remain evidence/context around the model, not substitutes for it.
+    if intent in {"casual", "technical", "general"} and model_router.available():
+        retrieved = None
+        source = "llm"
+        if intent != "casual":
+            result = search_manager.process(message, context)
+            if result and result.get("answer"):
+                retrieved = result["answer"]
+                source = result.get("source", "search")
+
+        memory_items = UNDERSTANDING.memory.search_all(user_id, message, top_k=3) if user_id is not None else []
+        memory_context = "\n".join(
+            f"- [{item.get('memory_scope')}] {item.get('answer')}"
+            for item in memory_items
+        ) or None
+
+        model_messages = []
+        for item in (context or [])[-20:]:
+            if item.get("role") in {"user", "assistant"} and item.get("message"):
+                model_messages.append({"role": item["role"], "message": item["message"]})
+        model_messages.append({"role": "user", "message": message})
+
+        try:
+            model_result = model_router.generate(
+                model_messages,
+                instructions=build_system_prompt(
+                    memory_context=memory_context,
+                    retrieved_context=retrieved,
+                ),
+            )
+            return {
+                "answer": model_result["answer"],
+                "source": model_result.get("source", source),
+                "model": model_result.get("model"),
+            }
+        except Exception:
+            # Preserve the deterministic retrieval/fallback path if the model is unavailable.
+            pass
 
     if intent in {"casual", "memory", "personal"}:
         if intent == "personal":
