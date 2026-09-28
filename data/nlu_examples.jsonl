@@ -1,0 +1,48 @@
+{"text":"hi","intent":"greeting"}
+{"text":"hello medha","intent":"greeting"}
+{"text":"hey there","intent":"greeting"}
+{"text":"good morning","intent":"greeting"}
+{"text":"good evening","intent":"greeting"}
+{"text":"how are you","intent":"status"}
+{"text":"how are you doing","intent":"status"}
+{"text":"are you working","intent":"status"}
+{"text":"are you online","intent":"status"}
+{"text":"what is your name","intent":"identity"}
+{"text":"who are you","intent":"identity"}
+{"text":"tell me about yourself","intent":"identity"}
+{"text":"what can you do","intent":"capability"}
+{"text":"what are your capabilities","intent":"capability"}
+{"text":"what can medha help me with","intent":"capability"}
+{"text":"remember that my favorite editor is vscode","intent":"memory"}
+{"text":"remember this","intent":"memory"}
+{"text":"please remember this preference","intent":"memory"}
+{"text":"don't forget what I just told you","intent":"memory"}
+{"text":"save this in memory","intent":"memory"}
+{"text":"I prefer python","intent":"personal"}
+{"text":"I like chess","intent":"personal"}
+{"text":"my favorite language is python","intent":"personal"}
+{"text":"call me Sathwik","intent":"personal"}
+{"text":"I study at KL University","intent":"personal"}
+{"text":"open chrome","intent":"desktop"}
+{"text":"launch chrome","intent":"desktop"}
+{"text":"start my browser","intent":"desktop"}
+{"text":"run vscode","intent":"desktop"}
+{"text":"open my coding workspace","intent":"desktop"}
+{"text":"close chrome","intent":"desktop"}
+{"text":"help me debug this code","intent":"technical"}
+{"text":"explain this python error","intent":"technical"}
+{"text":"how does a binary search work","intent":"technical"}
+{"text":"write a react component","intent":"technical"}
+{"text":"help with my database","intent":"technical"}
+{"text":"what is an algorithm","intent":"technical"}
+{"text":"what is the capital of japan","intent":"knowledge"}
+{"text":"explain photosynthesis","intent":"knowledge"}
+{"text":"tell me about black holes","intent":"knowledge"}
+{"text":"what happened in this topic","intent":"knowledge"}
+{"text":"research this subject","intent":"research"}
+{"text":"search the web for this","intent":"research"}
+{"text":"find information about this","intent":"research"}
+{"text":"look this up","intent":"research"}
+{"text":"thanks","intent":"thanks"}
+{"text":"thank you","intent":"thanks"}
+{"text":"that helped","intent":"thanks"}
