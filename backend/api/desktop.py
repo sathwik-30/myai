@@ -13,7 +13,7 @@ router = APIRouter(prefix="/desktop", tags=["desktop"])
 agent = DesktopAgent()
 
 
-def _remove_temp_file(path: str):
+def _remove_temp_file(path: str) -> None:
     try:
         os.remove(path)
     except OSError:
