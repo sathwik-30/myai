@@ -353,10 +353,37 @@ function App() {
                 <main className="chat-container">
                     {!activeChat && (
                         <section className="welcome">
-                            <div className="welcome-icon">M</div>
-                            <p className="eyebrow">WELCOME BACK, {username.toUpperCase()}</p>
-                            <h2>Start a new conversation</h2>
-                            <button className="primary-button welcome-button" onClick={newChat}>＋ New chat</button>
+                            <div className="welcome-heading">
+                                <div className="welcome-icon">M</div>
+                                <div>
+                                    <p className="eyebrow">MEDHA AI</p>
+                                    <h2>How can I help, {username}?</h2>
+                                    <p className="welcome-text">Your private mini assistant for learning, projects, research, memory, and everyday work.</p>
+                                </div>
+                            </div>
+                            <div className="quick-grid">
+                                <button className="quick-card" onClick={() => { setInput("Help me learn a topic step by step"); newChat(); }}>
+                                    <span className="quick-icon">✦</span>
+                                    <strong>Learn something</strong>
+                                    <small>Explain a topic clearly</small>
+                                </button>
+                                <button className="quick-card" onClick={() => { setInput("Help me debug my code"); newChat(); }}>
+                                    <span className="quick-icon">⌘</span>
+                                    <strong>Work on code</strong>
+                                    <small>Debug, design, or improve</small>
+                                </button>
+                                <button className="quick-card" onClick={() => { setInput("Help me research this topic"); newChat(); }}>
+                                    <span className="quick-icon">⌕</span>
+                                    <strong>Research</strong>
+                                    <small>Use knowledge and the web</small>
+                                </button>
+                                <button className="quick-card" onClick={() => { setInput("Help me plan my next task"); newChat(); }}>
+                                    <span className="quick-icon">✓</span>
+                                    <strong>Plan work</strong>
+                                    <small>Break a goal into steps</small>
+                                </button>
+                            </div>
+                            <button className="primary-button welcome-button" onClick={newChat}>＋ Start new chat</button>
                         </section>
                     )}
 
