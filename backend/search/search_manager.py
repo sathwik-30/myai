@@ -5,18 +5,13 @@ from backend.knowledge.resource_loader import search_resources
 
 
 class SearchManager:
+    """Route knowledge requests from cheapest/local sources to slower external sources."""
+
     def __init__(self, user_id=None):
         self.memory = MemoryManager(user_id=user_id)
 
     def process(self, question, context=None):
-        memory = self.memory.search(question)
-
-        if memory:
-            return {
-                "answer": memory["answer"],
-                "source": memory.get("source", "memory"),
-            }
-
+        # Local resources are intentionally checked before external services.
         local_results = search_resources(question)
         if local_results:
             item = local_results[0]
@@ -26,6 +21,7 @@ class SearchManager:
                 "resource": item["path"],
             }
 
+        # Wikipedia is useful for ordinary factual/general questions.
         wikipedia_results = search_wikipedia(question)
         if wikipedia_results:
             answer = self._best_wikipedia_answer(wikipedia_results)
@@ -33,6 +29,8 @@ class SearchManager:
                 self._learn(question, answer, "wikipedia")
                 return {"answer": answer, "source": "wikipedia"}
 
+        # DuckDuckGo is the final fallback. Keep it out of the critical path
+        # when a faster source already produced an answer.
         web_results = search_web(question)
         if web_results:
             answer = self._best_web_answer(web_results)
