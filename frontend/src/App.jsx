@@ -358,7 +358,7 @@ function App() {
                     <button className="mobile-menu" onClick={() => setSidebarOpen(!sidebarOpen)}>☰</button>
                     <div>
                         <h1>{activeChat?.title || "New chat"}</h1>
-                        <p>Personal AI assistant</p>
+                        <p>Independent local AI · memory enabled · no runtime LLM</p>
                     </div>
                     {error && <span className="header-error">{error}</span>}
                 </header>
