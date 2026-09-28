@@ -1,7 +1,8 @@
 from pathlib import Path
 from typing import Dict, List
 
-RESOURCE_ROOT = Path(__file__).resolve().parent / "resources"
+# Repository-level permanent knowledge folder.
+RESOURCE_ROOT = Path(__file__).resolve().parents[2] / "knowledge" / "resources"
 SUPPORTED_EXTENSIONS = {".txt", ".md", ".markdown"}
 IGNORED_FILENAMES = {"README.md"}
 
@@ -10,11 +11,13 @@ def load_resources() -> List[Dict[str, str]]:
     RESOURCE_ROOT.mkdir(parents=True, exist_ok=True)
     resources = []
 
+    ignored = {name.lower() for name in IGNORED_FILENAMES}
+
     for path in sorted(RESOURCE_ROOT.rglob("*")):
         if (
             not path.is_file()
             or path.suffix.lower() not in SUPPORTED_EXTENSIONS
-            or path.name.upper() in {name.upper() for name in IGNORED_FILENAMES}
+            or path.name.lower() in ignored
         ):
             continue
 
@@ -50,9 +53,8 @@ def _relevant_excerpt(text: str, query_words: set[str], limit: int = 1800) -> st
 
     scored.sort(reverse=True)
     selected = [item[2] for item in scored[:3]]
-    excerpt = "\n\n".join(selected)
-    return excerpt[:limit]
-
+    return "\n\n".join(selected)[:limit]
+    
 
 def search_resources(query: str, limit: int = 3) -> List[Dict[str, str]]:
     resources = load_resources()
@@ -64,13 +66,11 @@ def search_resources(query: str, limit: int = 3) -> List[Dict[str, str]]:
         return []
 
     scored = []
-
     for item in resources:
         words = {word.lower() for word in item["text"].split() if len(word) > 2}
         overlap = len(query_words & words)
         if overlap:
-            score = overlap / max(len(query_words), 1)
-            scored.append((score, item))
+            scored.append((overlap / max(len(query_words), 1), item))
 
     scored.sort(key=lambda pair: pair[0], reverse=True)
 
