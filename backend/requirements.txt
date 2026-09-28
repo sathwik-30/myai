@@ -4,3 +4,10 @@ python-dotenv
 beautifulsoup4
 requests
 scikit-learn
+annotated-doc
+annotated-types
+anyio
+certifi
+charset-normalizer
+idna
+typing-extensions
