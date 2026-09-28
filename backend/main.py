@@ -4,6 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from backend.api.chat import router
 from backend.api.auth import router as auth_router
 from backend.api.chats import router as chats_router
+from backend.api.desktop import router as desktop_router
 from backend.auth.dependencies import current_user
 from backend.chats.store import init_chat_tables
 from backend.memory.semantic_memory import count as memory_count, list_memories, delete_memory
@@ -28,6 +29,7 @@ app.add_middleware(
 app.include_router(router, prefix="/api")
 app.include_router(auth_router, prefix="/api")
 app.include_router(chats_router, prefix="/api")
+app.include_router(desktop_router, prefix="/api")
 init_chat_tables()
 
 
