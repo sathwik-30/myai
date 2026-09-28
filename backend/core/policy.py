@@ -16,8 +16,8 @@ def _load_lines() -> List[str]:
 
 def load_policy() -> Dict[str, Any]:
     rules = _load_lines()
-    always = [r[7:].strip() for r in rules if r.startswith("ALWAYS:")]
-    never = [r[6:].strip() for r in rules if r.startswith("NEVER:")]
+    always = [r[len("ALWAYS:"):].strip() for r in rules if r.startswith("ALWAYS:")]
+    never = [r[len("NEVER:"):].strip() for r in rules if r.startswith("NEVER:")]
     confirm = [
         r[len("REQUIRE_CONFIRMATION:"):].strip()
         for r in rules
@@ -44,6 +44,20 @@ def blocked_by_override(text: str) -> str | None:
 
 
 def apply_override(response: str, user_message: str) -> Dict[str, Any]:
+    """Apply the core policy before normal response generation.
+
+    The override file is authoritative policy, not a memory source. A missing
+    policy file fails closed so the assistant does not silently operate without
+    its core rules.
+    """
+    policy = load_policy()
+    if not policy["always"] and not policy["never"] and not policy["require_confirmation"]:
+        return {
+            "allowed": False,
+            "response": "I can't safely process this because my core override policy is unavailable.",
+            "reason": "core_override_unavailable",
+        }
+
     blocked_rule = blocked_by_override(user_message)
     if blocked_rule:
         return {
