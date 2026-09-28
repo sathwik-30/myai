@@ -4,7 +4,7 @@ from backend.brain.understanding import LanguageUnderstanding
 from backend.brain.language import detect_language
 from backend.core.policy import apply_override
 from backend.core.system_prompt import build_system_prompt
-from backend.llm.router import router as model_router
+from backend.llm.router import router as model_router\nfrom backend.memory.layers import search_all
 
 UNDERSTANDING = LanguageUnderstanding()
 
@@ -122,7 +122,7 @@ def generate_response(message, context, knowledge, search_manager, user_id=None)
                 retrieved = result["answer"]
                 source = result.get("source", "search")
 
-        memory_items = UNDERSTANDING.memory.search_all(user_id, message, top_k=3) if user_id is not None else []
+        memory_items = search_all(user_id, message, top_k=3) if user_id is not None else []
         memory_context = "\n".join(
             f"- [{item.get('memory_scope')}] {item.get('answer')}"
             for item in memory_items
