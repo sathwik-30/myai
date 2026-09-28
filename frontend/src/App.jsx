@@ -101,6 +101,7 @@ function App() {
     const textareaRef = useRef(null);
     const messagesEndRef = useRef(null);
     const activeChatIdRef = useRef(null);
+    const requestControllerRef = useRef(null);
 
     const loadChats = async () => {
         const data = await jsonRequest("/chats");
@@ -151,6 +152,12 @@ function App() {
         activeChatIdRef.current = activeChat?.id ?? null;
     }, [activeChat]);
 
+    const stopResponse = () => {
+        requestControllerRef.current?.abort();
+        requestControllerRef.current = null;
+        setLoading(false);
+    };
+
     const sendMessage = async () => {
         const message = input.trim();
         if (!message || loading || !activeChat) return;
@@ -159,6 +166,8 @@ function App() {
         setLoading(true);
         setError("");
 
+        const controller = new AbortController();
+        requestControllerRef.current = controller;
         setMessages((prev) => [...prev, { role: "user", message }]);
 
         try {
@@ -166,6 +175,7 @@ function App() {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ message, chat_id: activeChat.id }),
+                signal: controller.signal,
             });
             if (activeChatIdRef.current === sentChatId) {
                 setMessages((prev) => [...prev, {
@@ -178,6 +188,7 @@ function App() {
             await loadChats();
             setActiveChat((current) => current ? { ...current, updated_at: new Date().toISOString() } : current);
         } catch (err) {
+            if (err.name === "AbortError") return;
             // Do not create a fake assistant message for a failed request.
             // The backend persists the user turn, and the next reload will show
             // exactly what is actually stored.
@@ -185,7 +196,10 @@ function App() {
                 setError(err.message);
             }
         } finally {
-            setLoading(false);
+            if (requestControllerRef.current === controller) {
+                requestControllerRef.current = null;
+                setLoading(false);
+            }
             setTimeout(() => textareaRef.current?.focus(), 0);
         }
     };
@@ -363,7 +377,15 @@ function App() {
                 <div className="composer-wrap">
                     <div className="input-area">
                         <textarea ref={textareaRef} value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); } }} placeholder={activeChat ? "Message Medha..." : "Create a chat first..."} rows="1" disabled={!activeChat}/>
-                        <button className="send-button" onClick={sendMessage} disabled={loading || !input.trim() || !activeChat}>↑</button>
+                        {loading ? (
+                            <button className="stop-button" onClick={stopResponse} aria-label="Stop response" title="Stop response">
+                                ■
+                            </button>
+                        ) : (
+                            <button className="send-button" onClick={sendMessage} disabled={!input.trim() || !activeChat} aria-label="Send message" title="Send message">
+                                ↑
+                            </button>
+                        )}
                     </div>
                     <p className="composer-hint">Enter to send · Shift + Enter for a new line</p>
                 </div>
