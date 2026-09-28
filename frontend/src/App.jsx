@@ -188,6 +188,7 @@ function App() {
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ message, chat_id: activeChat.id }),
                 signal: controller.signal,
+                timeoutMs: 20000,
             });
             if (activeChatIdRef.current === sentChatId) {
                 setMessages((prev) => [...prev, {
