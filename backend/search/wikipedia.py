@@ -2,7 +2,7 @@ import requests
 
 
 WIKIPEDIA_API = "https://en.wikipedia.org/w/api.php"
-REQUEST_TIMEOUT = 4
+REQUEST_TIMEOUT = 3
 
 
 def search_wikipedia(query):
