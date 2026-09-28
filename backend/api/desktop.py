@@ -2,7 +2,7 @@ import os
 import tempfile
 
 from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse\nfrom starlette.background import BackgroundTask
 from pydantic import BaseModel, Field
 
 from backend.auth.dependencies import current_user
@@ -99,7 +99,7 @@ def desktop_screenshot(user=Depends(current_user)):
     os.close(fd)
     try:
         _run(lambda: agent.screenshot(path))
-        return FileResponse(path, media_type="image/png", filename="medha-screen.png")
+        return FileResponse(\n            path,\n            media_type="image/png",\n            filename="medha-screen.png",\n            background=BackgroundTask(_remove_temp_file, path),\n        )
     except Exception:
         try:
             os.remove(path)
