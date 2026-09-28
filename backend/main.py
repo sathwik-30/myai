@@ -8,6 +8,7 @@ from backend.api.desktop import router as desktop_router
 from backend.auth.dependencies import current_user
 from backend.chats.store import init_chat_tables
 from backend.memory.layers import counts, delete_memory, list_memories, SCOPES
+from backend.llm.router import router as model_router
 
 app = FastAPI(
     title="Medha AI",
@@ -95,5 +96,5 @@ def health():
         "service": "medha-backend",
         "memory_layers": True,
         "runtime_model": "local-memory",
-        "ollama": False,
+        "ollama": False,\n        "model_provider": model_router.provider_name,\n        "model_available": model_router.available(),
     }
