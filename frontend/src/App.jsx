@@ -9,19 +9,33 @@ const API_CANDIDATES = [
 
 async function apiRequest(path, options = {}) {
     let lastError = null;
+    const timeoutMs = options.timeoutMs ?? 8000;
+    const { timeoutMs: _timeoutMs, ...fetchOptions } = options;
+
     for (const base of API_CANDIDATES) {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), timeoutMs);
         try {
-            const headers = { ...(options.headers || {}) };
+            const headers = { ...(fetchOptions.headers || {}) };
             const token = localStorage.getItem("medha_token");
             if (token) headers.Authorization = `Bearer ${token}`;
+            if (fetchOptions.signal) {
+                fetchOptions.signal.addEventListener("abort", () => controller.abort(), { once: true });
+            }
+
             const response = await fetch(`${base}${path}`, {
-                ...options,
+                ...fetchOptions,
                 headers,
+                signal: controller.signal,
                 cache: "no-store",
             });
             return response;
         } catch (error) {
-            lastError = error;
+            lastError = error.name === "AbortError"
+                ? new Error("Medha backend request timed out or was cancelled.")
+                : error;
+        } finally {
+            clearTimeout(timer);
         }
     }
     throw lastError || new Error("Unable to reach Medha backend");
@@ -118,30 +132,28 @@ function App() {
     };
 
     const newChat = async () => {
+        if (loading) return;
         setError("");
-
         try {
-            // Always create a completely new, empty conversation.
             const data = await jsonRequest("/chats", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ title: "New chat" }),
             });
+            if (!data.chat_id) throw new Error("The backend did not return a chat ID.");
 
-            if (!data.chat_id) {
-                throw new Error("The backend did not return a chat ID.");
-            }
-
-            // Refresh the history so the new chat appears as a separate item.
-            const chatsData = await jsonRequest("/chats");
-            setChats(chatsData.chats || []);
-
-            // Open only the newly-created empty chat.
-            const newChatData = await jsonRequest(`/chats/${data.chat_id}`);
-            setActiveChat(newChatData.chat);
+            // Create locally first. One POST is enough. The next list refresh
+            // happens only when the user returns to the sidebar flow.
+            const chat = {
+                id: data.chat_id,
+                title: "New chat",
+                created_at: new Date().toISOString(),
+                updated_at: new Date().toISOString(),
+            };
+            setChats((current) => [chat, ...current]);
+            setActiveChat(chat);
             setMessages([]);
             setInput("");
-
             setTimeout(() => textareaRef.current?.focus(), 0);
         } catch (err) {
             setError(`Could not create chat: ${err.message}`);
