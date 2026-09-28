@@ -7,7 +7,7 @@ from backend.api.chats import router as chats_router
 from backend.api.desktop import router as desktop_router
 from backend.auth.dependencies import current_user
 from backend.chats.store import init_chat_tables
-from backend.memory.semantic_memory import count as memory_count, list_memories, delete_memory
+from backend.memory.layers import counts, delete_memory, list_memories, SCOPES
 
 app = FastAPI(
     title="Medha AI",
@@ -42,28 +42,58 @@ def home():
     }
 
 
-
 @app.get("/api/memory")
-def get_memory(memory_type: str | None = None, limit: int = 100, user=Depends(current_user)):
+def get_memory(
+    memory_scope: str | None = None,
+    limit: int = 100,
+    user=Depends(current_user),
+):
+    if memory_scope is not None and memory_scope not in SCOPES:
+        raise HTTPException(status_code=400, detail="Invalid memory scope")
+
     user_id = int(user["sub"])
+    limit = max(1, min(int(limit), 500))
+
+    if memory_scope:
+        memories = list_memories(memory_scope, user_id, limit)
+    else:
+        memories = []
+        for scope in (SCOPES - {"knowledge"}):
+            memories.extend(list_memories(scope, user_id, limit))
+        memories.extend(list_memories("knowledge", user_id, limit))
+
     return {
-        "count": len(list_memories(memory_type=memory_type, limit=limit, user_id=user_id)),
-        "memories": list_memories(memory_type=memory_type, limit=limit, user_id=user_id),
+        "count": len(memories),
+        "memories": memories,
+        "counts": counts(user_id),
     }
 
 
-@app.delete("/api/memory/{memory_id}")
-def remove_memory(memory_id: int, user=Depends(current_user)):
-    if not delete_memory(memory_id, user_id=int(user["sub"])):
+@app.delete("/api/memory/{memory_scope}/{memory_id}")
+def remove_memory(
+    memory_scope: str,
+    memory_id: int,
+    user=Depends(current_user),
+):
+    if memory_scope not in SCOPES or memory_scope == "knowledge":
+        raise HTTPException(status_code=400, detail="Only personal and temporary memory can be deleted here")
+
+    if not delete_memory(memory_scope, int(user["sub"]), memory_id):
         raise HTTPException(status_code=404, detail="Memory not found")
-    return {"deleted": True, "memory_id": memory_id}
+
+    return {
+        "deleted": True,
+        "memory_scope": memory_scope,
+        "memory_id": memory_id,
+    }
+
 
 @app.get("/api/health")
 def health():
     return {
         "status": "ok",
         "service": "medha-backend",
-        "memory_count": memory_count(),
+        "memory_layers": True,
         "runtime_model": "local-memory",
         "ollama": False,
     }
