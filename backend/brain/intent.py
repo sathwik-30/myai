@@ -43,8 +43,6 @@ def classify(message: str) -> Intent:
     if text in TEMPORARY_PERSONAL_PHRASES:
         return "casual"
 
-    # Store stable facts and preferences, not every sentence beginning with
-    # "I am". This prevents ordinary conversation from polluting memory.
     if (
         re.search(r"\bmy\s+(name|project|goal|preference|favorite|favourite|skill|role|college|course|branch)\b", text)
         or re.search(r"\bi\s+(prefer|like|love|hate|use|work|study|want|need)\b", text)
@@ -60,7 +58,6 @@ def classify(message: str) -> Intent:
     ):
         return "technical"
 
-    if text.endswith("?") and len(tokens) <= 12:
-        return "casual"
-
+    # A short question is still a question, not automatically casual chat.
+    # Send unknown/general questions to the knowledge search pipeline.
     return "general"
