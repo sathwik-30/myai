@@ -1,7 +1,7 @@
 import re
 from typing import Literal
 
-Intent = Literal["casual", "technical", "memory", "personal", "general"]
+Intent = Literal["casual", "technical", "memory", "personal", "permanent", "general"]
 
 TECHNICAL_TERMS = {
     "api", "algorithm", "array", "backend", "bug", "code", "coding", "compiler",
@@ -12,7 +12,7 @@ TECHNICAL_TERMS = {
     "machine learning", "artificial intelligence", "ai", "cyber security",
 }
 
-MEMORY_CUES = (
+PERMANENT_CUES = (\n    "remember permanently", "store permanently", "save permanently",\n    "keep this permanently", "teach you permanently", "learn this permanently",\n    "always remember", "never forget this",\n)\n\nMEMORY_CUES = (
     "remember this", "remember that", "don't forget", "do not forget",
     "keep in mind", "save this", "store this", "my preference is",
     "i prefer", "i like", "i dislike", "i use", "i want you to remember",
