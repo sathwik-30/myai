@@ -86,6 +86,16 @@ class ConversationEngine:
                         response = "Got it. I'll remember that for our future conversations."
                         source = "memory_saved"
 
+            elif classify(message) == "permanent":
+                self.memory.learn_permanent(
+                    message,
+                    message,
+                    source="user",
+                    importance=5,
+                )
+                response = "Got it. I'll keep that in my permanent memory."
+                source = "permanent_memory_saved"
+
             elif classify(message) in {"memory", "personal"}:
                 self.memory.learn_personal(
                     message,
