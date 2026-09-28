@@ -11,7 +11,8 @@ def audit(event: str, user_id: int | None = None, **data: Any) -> None:
     """
     Structured audit event.
 
-    Never pass secrets, passwords, tokens, or raw authorization headers.
+    Never pass secrets, passwords, tokens, raw authorization headers, or raw
+    sensitive document contents.
     """
     safe = {
         "event": event,
