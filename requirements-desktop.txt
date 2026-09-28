@@ -1,0 +1,5 @@
+# Optional Windows desktop-agent dependencies
+pyautogui>=0.9.54
+mss>=10.0.0
+pygetwindow>=0.0.9
+psutil>=7.0.0
