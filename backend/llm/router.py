@@ -1,31 +1,18 @@
-import os
+"""Compatibility boundary for Medha's local brain.
+
+There is intentionally no cloud/local-LLM provider here.  Runtime language
+understanding belongs to backend.brain.local_nlu.
+"""
 from typing import Any, Dict, List
 
-from backend.llm.openai_provider import OpenAIProvider
+from backend.brain.local_nlu import get_language_engine
 
 
 class ModelRouter:
-    """
-    Central model router.
-
-    Policy:
-    - explicit MEDHA_MODEL_PROVIDER wins
-    - otherwise use configured cloud model
-    - if no model provider is configured, return unavailable rather than fake AI
-    """
-
-    def __init__(self):
-        self.provider_name = os.getenv("MEDHA_MODEL_PROVIDER", "openai").strip().lower()
-        self.openai = OpenAIProvider()
-
-    def _provider(self):
-        if self.provider_name == "openai":
-            return self.openai
-        return None
+    provider_name = "local"
 
     def available(self) -> bool:
-        provider = self._provider()
-        return bool(provider and provider.available())
+        return get_language_engine().available
 
     def generate(
         self,
@@ -33,12 +20,9 @@ class ModelRouter:
         instructions: str = "",
         model: str | None = None,
     ) -> Dict[str, Any]:
-        provider = self._provider()
-        if provider is None:
-            raise RuntimeError(f"Unknown model provider: {self.provider_name}")
-        if not provider.available():
-            raise RuntimeError("No configured LLM provider is available")
-        return provider.generate(messages, instructions=instructions, model=model)
+        raise RuntimeError(
+            "Medha is independent: external LLM providers are not used at runtime."
+        )
 
 
 router = ModelRouter()
