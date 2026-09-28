@@ -3,79 +3,32 @@ from bs4 import BeautifulSoup
 
 
 def search_web(query):
-    url = "https://html.duckduckgo.com/html/"
-
     try:
         response = requests.get(
-            url,
-            params={
-                "q": query
-            },
-            headers={
-                "User-Agent": "Mozilla/5.0"
-            },
-            timeout=15
+            "https://html.duckduckgo.com/html/",
+            params={"q": query},
+            headers={"User-Agent": "Medha/1.0 personal-assistant"},
+            timeout=5,
         )
-
         response.raise_for_status()
 
-        soup = BeautifulSoup(
-            response.text,
-            "html.parser"
-        )
-
+        soup = BeautifulSoup(response.text, "html.parser")
         results = []
 
-        for result in soup.select(
-            ".result"
-        )[:5]:
-
-            title_element = result.select_one(
-                ".result__title"
-            )
-
-            snippet_element = result.select_one(
-                ".result__snippet"
-            )
-
-            link_element = result.select_one(
-                ".result__url"
-            )
-
+        for result in soup.select(".result")[:3]:
+            title_element = result.select_one(".result__title")
             if not title_element:
                 continue
 
-            title = title_element.get_text(
-                " ",
-                strip=True
-            )
-
-            snippet = ""
-
-            if snippet_element:
-                snippet = snippet_element.get_text(
-                    " ",
-                    strip=True
-                )
-
-            link = ""
-
-            if link_element:
-                link = link_element.get_text(
-                    " ",
-                    strip=True
-                )
+            snippet_element = result.select_one(".result__snippet")
+            link_element = result.select_one(".result__url")
 
             results.append({
-                "title": title,
-                "snippet": snippet,
-                "url": link
+                "title": title_element.get_text(" ", strip=True),
+                "snippet": snippet_element.get_text(" ", strip=True) if snippet_element else "",
+                "url": link_element.get_text(" ", strip=True) if link_element else "",
             })
 
         return results
-
-    except requests.RequestException:
-        return []
-
-    except Exception:
+    except (requests.RequestException, ValueError, TypeError):
         return []
