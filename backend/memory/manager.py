@@ -1,7 +1,17 @@
-from backend.memory.layers import KNOWLEDGE, PERSONAL, TEMPORARY, remember, search, search_all
+from backend.memory.layers import (
+    KNOWLEDGE,
+    PERMANENT,
+    PERSONAL,
+    TEMPORARY,
+    remember,
+    search,
+    search_all,
+)
 
 
 class MemoryManager:
+    """Facade over Medha's four explicit memory layers."""
+
     def __init__(self, user_id=None):
         self.user_id = user_id
 
@@ -30,7 +40,7 @@ class MemoryManager:
             scope = {
                 PERSONAL: PERSONAL,
                 TEMPORARY: TEMPORARY,
-                "conversation": TEMPORARY,
+                PERMANENT: PERMANENT,
                 KNOWLEDGE: KNOWLEDGE,
             }.get(memory_type, KNOWLEDGE)
 
@@ -46,24 +56,52 @@ class MemoryManager:
 
     def learn_personal(self, fact, answer, importance=5):
         return self.learn(
-            fact, answer, source="user", importance=importance,
-            memory_type=PERSONAL, memory_scope=PERSONAL,
+            fact,
+            answer,
+            source="user",
+            importance=importance,
+            memory_type=PERSONAL,
+            memory_scope=PERSONAL,
         )
 
-    def learn_knowledge(self, question, answer, source="local_resource", importance=4):
+    def learn_permanent(self, fact, answer, source="user", importance=5):
+        """Store something the owner explicitly taught Medha to retain permanently."""
         return self.learn(
-            question, answer, source=source, importance=importance,
-            memory_type=KNOWLEDGE, memory_scope=KNOWLEDGE,
+            fact,
+            answer,
+            source=source,
+            importance=importance,
+            memory_type=PERMANENT,
+            memory_scope=PERMANENT,
         )
 
-    def learn_temporary(self, question, answer, source="conversation", importance=3, expires_at=None):
+    def learn_knowledge(self, question, answer, source="web", importance=4):
+        """Store learned external knowledge with six-month inactivity expiry."""
         return self.learn(
-            question, answer, source=source, importance=importance,
-            memory_type=TEMPORARY, memory_scope=TEMPORARY, expires_at=expires_at,
+            question,
+            answer,
+            source=source,
+            importance=importance,
+            memory_type=KNOWLEDGE,
+            memory_scope=KNOWLEDGE,
+        )
+
+    def learn_temporary(self, question, answer, source="temporary_resource", importance=3, expires_at=None):
+        return self.learn(
+            question,
+            answer,
+            source=source,
+            importance=importance,
+            memory_type=TEMPORARY,
+            memory_scope=TEMPORARY,
+            expires_at=expires_at,
         )
 
     def search_personal(self, question):
         return self.search(question, memory_scope=PERSONAL)
+
+    def search_permanent(self, question):
+        return self.search(question, memory_scope=PERMANENT)
 
     def search_knowledge(self, question):
         return self.search(question, memory_scope=KNOWLEDGE)
