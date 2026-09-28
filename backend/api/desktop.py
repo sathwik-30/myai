@@ -2,7 +2,8 @@ import os
 import tempfile
 
 from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import FileResponse\nfrom starlette.background import BackgroundTask
+from fastapi.responses import FileResponse
+from starlette.background import BackgroundTask
 from pydantic import BaseModel, Field
 
 from backend.auth.dependencies import current_user
@@ -10,6 +11,13 @@ from backend.desktop.agent import DesktopAgent, DesktopAgentError
 
 router = APIRouter(prefix="/desktop", tags=["desktop"])
 agent = DesktopAgent()
+
+
+def _remove_temp_file(path: str):
+    try:
+        os.remove(path)
+    except OSError:
+        pass
 
 
 def _run(action):
@@ -99,10 +107,12 @@ def desktop_screenshot(user=Depends(current_user)):
     os.close(fd)
     try:
         _run(lambda: agent.screenshot(path))
-        return FileResponse(\n            path,\n            media_type="image/png",\n            filename="medha-screen.png",\n            background=BackgroundTask(_remove_temp_file, path),\n        )
+        return FileResponse(
+            path,
+            media_type="image/png",
+            filename="medha-screen.png",
+            background=BackgroundTask(_remove_temp_file, path),
+        )
     except Exception:
-        try:
-            os.remove(path)
-        except OSError:
-            pass
+        _remove_temp_file(path)
         raise
