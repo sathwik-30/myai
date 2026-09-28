@@ -1,63 +1,36 @@
-import re
+"""Intent compatibility layer backed by Medha's trainable local NLU."""
 from typing import Literal
 
-Intent = Literal["casual", "technical", "memory", "personal", "permanent", "general"]
+from backend.brain.local_nlu import get_language_engine
 
-TECHNICAL_TERMS = {
-    "api", "algorithm", "array", "backend", "bug", "code", "coding", "compiler",
-    "database", "dbms", "docker", "error", "fastapi", "framework", "git", "github",
-    "java", "javascript", "linux", "microservice", "model", "network", "npm",
-    "python", "react", "sql", "spring", "tensorflow", "technology", "technical",
-    "program", "programming", "server", "software", "syntax", "system", "web",
-    "machine learning", "artificial intelligence", "ai", "cyber security",
-}
+Intent = Literal[
+    "greeting", "status", "identity", "capability", "memory", "personal",
+    "desktop", "technical", "knowledge", "research", "thanks", "general",
+    "casual", "permanent",
+]
 
-PERMANENT_CUES = (\n    "remember permanently", "store permanently", "save permanently",\n    "keep this permanently", "teach you permanently", "learn this permanently",\n    "always remember", "never forget this",\n)\n\nMEMORY_CUES = (
-    "remember this", "remember that", "don't forget", "do not forget",
-    "keep in mind", "save this", "store this", "my preference is",
-    "i prefer", "i like", "i dislike", "i use", "i want you to remember",
-    "call me", "my name is",
-)
-
-CASUAL_STARTS = (
-    "hi", "hello", "hey", "good morning", "good afternoon", "good evening",
-    "how are you", "what are you doing", "thanks", "thank you",
-)
-
-TEMPORARY_PERSONAL_PHRASES = (
-    "i am fine", "i'm fine", "i am good", "i'm good",
-    "i am okay", "i'm okay", "i am ok", "i'm ok",
-    "i am doing fine", "i'm doing fine",
-)
-
-def _tokens(text: str) -> set[str]:
-    return set(re.findall(r"[a-z0-9]+", text.lower()))
 
 def classify(message: str) -> Intent:
-    text = " ".join(message.lower().strip().split())
-    tokens = _tokens(text)
+    result = get_language_engine().understand(message)
+    intent = result.intent
 
-    if any(cue in text for cue in MEMORY_CUES):
+    # Preserve the older conversation engine's categories where they are
+    # semantically useful, without phrase-by-phrase if/else matching.
+    if intent == "memory":
         return "memory"
-
-    if text in TEMPORARY_PERSONAL_PHRASES:
-        return "casual"
-
-    if (
-        re.search(r"\bmy\s+(name|project|goal|preference|favorite|favourite|skill|role|college|course|branch)\b", text)
-        or re.search(r"\bi\s+(prefer|like|love|hate|use|work|study|want|need)\b", text)
-        or re.search(r"\bcall me\b", text)
-    ):
+    if intent == "personal":
         return "personal"
-
-    if any(text == start or text.startswith(start + " ") for start in CASUAL_STARTS):
+    if intent == "greeting":
         return "casual"
+    if intent in {"status", "identity", "capability", "thanks"}:
+        return "casual"
+    return intent  # type: ignore[return-value]
 
-    if any(term in text for term in TECHNICAL_TERMS if " " in term) or tokens.intersection(
-        {term for term in TECHNICAL_TERMS if " " not in term}
-    ):
-        return "technical"
 
-    # A short question is still a question, not automatically casual chat.
-    # Send unknown/general questions to the knowledge search pipeline.
-    return "general"
+def understand(message: str) -> dict:
+    result = get_language_engine().understand(message)
+    return {
+        "intent": result.intent,
+        "confidence": result.confidence,
+        "entities": result.entities,
+    }
