@@ -1,8 +1,8 @@
 from pathlib import Path
 from typing import Dict, List
 
-# Repository-level permanent knowledge folder.
-RESOURCE_ROOT = Path(__file__).resolve().parents[2] / "knowledge" / "resources"
+# Temporary resources are files supplied for a current exam/project/task.
+RESOURCE_ROOT = Path(__file__).resolve().parents[1] / "memory" / "temporary" / "resources"
 SUPPORTED_EXTENSIONS = {".txt", ".md", ".markdown"}
 IGNORED_FILENAMES = {"README.md"}
 
@@ -10,7 +10,6 @@ IGNORED_FILENAMES = {"README.md"}
 def load_resources() -> List[Dict[str, str]]:
     RESOURCE_ROOT.mkdir(parents=True, exist_ok=True)
     resources = []
-
     ignored = {name.lower() for name in IGNORED_FILENAMES}
 
     for path in sorted(RESOURCE_ROOT.rglob("*")):
@@ -54,7 +53,7 @@ def _relevant_excerpt(text: str, query_words: set[str], limit: int = 1800) -> st
     scored.sort(reverse=True)
     selected = [item[2] for item in scored[:3]]
     return "\n\n".join(selected)[:limit]
-    
+
 
 def search_resources(query: str, limit: int = 3) -> List[Dict[str, str]]:
     resources = load_resources()
