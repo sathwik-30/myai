@@ -4,6 +4,7 @@ python-dotenv
 beautifulsoup4
 requests
 scikit-learn
+joblib
 annotated-doc
 annotated-types
 anyio
