@@ -1,10 +1,61 @@
+import csv
+import json
 from pathlib import Path
 from typing import Dict, List
 
 # Temporary resources are files supplied for a current exam/project/task.
 RESOURCE_ROOT = Path(__file__).resolve().parents[1] / "memory" / "temporary" / "resources"
-SUPPORTED_EXTENSIONS = {".txt", ".md", ".markdown"}
+SUPPORTED_EXTENSIONS = {
+    ".txt", ".md", ".markdown", ".pdf", ".pptx", ".docx", ".csv", ".json"
+}
 IGNORED_FILENAMES = {"README.md"}
+
+
+def _read_pdf(path: Path) -> str:
+    from PyPDF2 import PdfReader
+    reader = PdfReader(str(path))
+    return "\n\n".join((page.extract_text() or "") for page in reader.pages)
+
+
+def _read_pptx(path: Path) -> str:
+    from pptx import Presentation
+    presentation = Presentation(str(path))
+    parts = []
+    for slide in presentation.slides:
+        for shape in slide.shapes:
+            if hasattr(shape, "text") and shape.text.strip():
+                parts.append(shape.text.strip())
+    return "\n\n".join(parts)
+
+
+def _read_docx(path: Path) -> str:
+    from docx import Document
+    document = Document(str(path))
+    parts = [paragraph.text.strip() for paragraph in document.paragraphs if paragraph.text.strip()]
+    for table in document.tables:
+        for row in table.rows:
+            cells = [cell.text.strip() for cell in row.cells]
+            if any(cells):
+                parts.append(" | ".join(cells))
+    return "\n\n".join(parts)
+
+
+def _read_file(path: Path) -> str:
+    suffix = path.suffix.lower()
+    if suffix in {".txt", ".md", ".markdown"}:
+        return path.read_text(encoding="utf-8")
+    if suffix == ".pdf":
+        return _read_pdf(path)
+    if suffix == ".pptx":
+        return _read_pptx(path)
+    if suffix == ".docx":
+        return _read_docx(path)
+    if suffix == ".csv":
+        with path.open("r", encoding="utf-8", newline="") as handle:
+            return "\n".join(" | ".join(row) for row in csv.reader(handle))
+    if suffix == ".json":
+        return json.dumps(json.loads(path.read_text(encoding="utf-8")), indent=2, ensure_ascii=False)
+    return ""
 
 
 def load_resources() -> List[Dict[str, str]]:
@@ -21,8 +72,8 @@ def load_resources() -> List[Dict[str, str]]:
             continue
 
         try:
-            text = path.read_text(encoding="utf-8")
-        except (OSError, UnicodeDecodeError):
+            text = _read_file(path)
+        except (OSError, UnicodeDecodeError, ValueError, ImportError):
             continue
 
         if text.strip():
