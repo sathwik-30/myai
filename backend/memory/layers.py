@@ -11,12 +11,15 @@ from sklearn.metrics.pairwise import cosine_similarity
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(BASE_DIR, "data")
 DB_PATH = os.path.join(DATA_DIR, "medha_memory.db")
-RETENTION_MONTHS = 6
+
+# Knowledge learned from the outside world expires after six months of inactivity.
+KNOWLEDGE_RETENTION_MONTHS = 6
 
 PERSONAL = "personal"
-KNOWLEDGE = "knowledge"
 TEMPORARY = "temporary"
-SCOPES = {PERSONAL, KNOWLEDGE, TEMPORARY}
+PERMANENT = "permanent"
+KNOWLEDGE = "knowledge"
+SCOPES = {PERSONAL, TEMPORARY, PERMANENT, KNOWLEDGE}
 
 _STOP_WORDS = {
     "a", "an", "the", "is", "am", "are", "was", "were", "be", "been",
@@ -54,10 +57,43 @@ def _compact(text: str, limit: int = 900) -> str:
     return text if len(text) <= limit else text[:limit].rsplit(" ", 1)[0] + "..."
 
 
+def _ensure_column(db, table: str, column: str, definition: str):
+    columns = {row["name"] for row in db.execute(f"PRAGMA table_info({table})").fetchall()}
+    if column not in columns:
+        db.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
+
+
 def _init():
     with _connect() as db:
         db.execute("""
             CREATE TABLE IF NOT EXISTS personal_memories (
+                id INTEGER PRIMARY KEY,
+                user_id INTEGER NOT NULL,
+                text TEXT NOT NULL,
+                answer TEXT NOT NULL,
+                source TEXT NOT NULL,
+                importance INTEGER NOT NULL DEFAULT 5,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                last_used_at TEXT NOT NULL
+            )
+        """)
+        db.execute("""
+            CREATE TABLE IF NOT EXISTS temporary_memories (
+                id INTEGER PRIMARY KEY,
+                user_id INTEGER NOT NULL,
+                text TEXT NOT NULL,
+                answer TEXT NOT NULL,
+                source TEXT NOT NULL,
+                importance INTEGER NOT NULL DEFAULT 3,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                last_used_at TEXT NOT NULL,
+                expires_at TEXT
+            )
+        """)
+        db.execute("""
+            CREATE TABLE IF NOT EXISTS permanent_memories (
                 id INTEGER PRIMARY KEY,
                 user_id INTEGER NOT NULL,
                 text TEXT NOT NULL,
@@ -79,31 +115,27 @@ def _init():
                 importance INTEGER NOT NULL DEFAULT 4,
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL,
-                last_used_at TEXT NOT NULL
-            )
-        """)
-        db.execute("""
-            CREATE TABLE IF NOT EXISTS temporary_memories (
-                id INTEGER PRIMARY KEY,
-                user_id INTEGER NOT NULL,
-                text TEXT NOT NULL,
-                answer TEXT NOT NULL,
-                source TEXT NOT NULL,
-                importance INTEGER NOT NULL DEFAULT 3,
-                created_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL,
                 last_used_at TEXT NOT NULL,
-                expires_at TEXT NOT NULL
+                expires_at TEXT
             )
         """)
+
+        # Upgrade databases created by the previous three-memory design.
+        _ensure_column(db, "temporary_memories", "expires_at", "TEXT")
+        _ensure_column(db, "knowledge_memories", "expires_at", "TEXT")
+
         db.execute("CREATE INDEX IF NOT EXISTS idx_personal_user ON personal_memories(user_id)")
+        db.execute("CREATE INDEX IF NOT EXISTS idx_temp_user ON temporary_memories(user_id)")
+        db.execute("CREATE INDEX IF NOT EXISTS idx_permanent_user ON permanent_memories(user_id)")
         db.execute("CREATE INDEX IF NOT EXISTS idx_knowledge_user ON knowledge_memories(user_id)")
-        db.execute("CREATE INDEX IF NOT EXISTS idx_temp_user_expiry ON temporary_memories(user_id, expires_at)")
+        db.execute("CREATE INDEX IF NOT EXISTS idx_knowledge_expiry ON knowledge_memories(expires_at)")
         db.commit()
+
     _migrate_legacy()
 
 
 def _migrate_legacy():
+    """Migrate the old generic memories table without destroying existing data."""
     with _connect() as db:
         columns = {row["name"] for row in db.execute("PRAGMA table_info(memories)").fetchall()}
         if not columns or "text" not in columns:
@@ -124,64 +156,89 @@ def _migrate_legacy():
             last_used_at = row["last_used_at"] or updated_at
             memory_type = row["memory_type"]
 
-            if user_id is not None and memory_type == PERSONAL:
-                exists = db.execute(
-                    "SELECT 1 FROM personal_memories WHERE user_id=? AND text=?",
+            if memory_type == PERSONAL and user_id is not None:
+                _insert_if_missing(
+                    db, "personal_memories", user_id, text, answer, source,
+                    importance, created_at, updated_at, last_used_at
+                )
+            elif memory_type == PERMANENT and user_id is not None:
+                _insert_if_missing(
+                    db, "permanent_memories", user_id, text, answer, source,
+                    importance, created_at, updated_at, last_used_at
+                )
+            elif memory_type == TEMPORARY and user_id is not None:
+                _insert_if_missing(
+                    db, "temporary_memories", user_id, text, answer, source,
+                    importance, created_at, updated_at, last_used_at
+                )
+            else:
+                # Old knowledge entries become learned knowledge and receive
+                # the new six-month inactivity lifecycle.
+                expiry = _months_after(
+                    datetime.fromisoformat(last_used_at.replace("Z", "+00:00")),
+                    KNOWLEDGE_RETENTION_MONTHS,
+                ).isoformat()
+                existing = db.execute(
+                    "SELECT 1 FROM knowledge_memories WHERE user_id IS ? AND text=?",
                     (user_id, text),
                 ).fetchone()
-                if not exists:
-                    db.execute(
-                        """INSERT INTO personal_memories
-                           (user_id,text,answer,source,importance,created_at,updated_at,last_used_at)
-                           VALUES (?,?,?,?,?,?,?,?)""",
-                        (user_id,text,answer,source,importance,created_at,updated_at,last_used_at),
-                    )
-            elif user_id is None:
-                exists = db.execute(
-                    "SELECT 1 FROM knowledge_memories WHERE user_id IS NULL AND text=?",
-                    (text,),
-                ).fetchone()
-                if not exists:
+                if not existing:
                     db.execute(
                         """INSERT INTO knowledge_memories
-                           (user_id,text,answer,source,importance,created_at,updated_at,last_used_at)
-                           VALUES (NULL,?,?,?,?,?,?,?)""",
-                        (text,answer,source,importance,created_at,updated_at,last_used_at),
-                    )
-            elif user_id is not None:
-                exists = db.execute(
-                    "SELECT 1 FROM temporary_memories WHERE user_id=? AND text=?",
-                    (user_id, text),
-                ).fetchone()
-                if not exists:
-                    expiry = _months_after(
-                        datetime.fromisoformat(last_used_at.replace("Z", "+00:00")),
-                        RETENTION_MONTHS,
-                    ).isoformat()
-                    db.execute(
-                        """INSERT INTO temporary_memories
                            (user_id,text,answer,source,importance,created_at,updated_at,last_used_at,expires_at)
                            VALUES (?,?,?,?,?,?,?,?,?)""",
-                        (user_id,text,answer,source,importance,created_at,updated_at,last_used_at,expiry),
+                        (
+                            user_id, text, answer, source, importance,
+                            created_at, updated_at, last_used_at, expiry,
+                        ),
                     )
         db.commit()
+
+
+def _insert_if_missing(db, table, user_id, text, answer, source, importance, created_at, updated_at, last_used_at):
+    exists = db.execute(
+        f"SELECT 1 FROM {table} WHERE user_id=? AND text=?",
+        (user_id, text),
+    ).fetchone()
+    if not exists:
+        db.execute(
+            f"""INSERT INTO {table}
+                (user_id,text,answer,source,importance,created_at,updated_at,last_used_at)
+                VALUES (?,?,?,?,?,?,?,?)""",
+            (
+                user_id, text, answer, source, importance,
+                created_at, updated_at, last_used_at,
+            ),
+        )
 
 
 def _cleanup():
     now = datetime.now(timezone.utc).isoformat()
     with _connect() as db:
-        db.execute("DELETE FROM temporary_memories WHERE expires_at <= ?", (now,))
+        # Temporary memory only expires when an explicit expiry was assigned.
+        db.execute(
+            "DELETE FROM temporary_memories WHERE expires_at IS NOT NULL AND expires_at <= ?",
+            (now,),
+        )
+        # Learned knowledge is the only memory type with automatic six-month
+        # inactivity deletion.
+        db.execute(
+            "DELETE FROM knowledge_memories WHERE expires_at IS NOT NULL AND expires_at <= ?",
+            (now,),
+        )
         db.commit()
 
 
 def _table(scope: str) -> str:
-    if scope == PERSONAL:
-        return "personal_memories"
-    if scope == KNOWLEDGE:
-        return "knowledge_memories"
-    if scope == TEMPORARY:
-        return "temporary_memories"
-    raise ValueError("Invalid memory scope")
+    tables = {
+        PERSONAL: "personal_memories",
+        TEMPORARY: "temporary_memories",
+        PERMANENT: "permanent_memories",
+        KNOWLEDGE: "knowledge_memories",
+    }
+    if scope not in tables:
+        raise ValueError("Invalid memory scope")
+    return tables[scope]
 
 
 def remember(
@@ -195,9 +252,9 @@ def remember(
 ) -> bool:
     if scope not in SCOPES or not text or not answer:
         return False
-    if scope == PERSONAL and user_id is None:
-        return False
-    if scope == TEMPORARY and user_id is None:
+
+    # Personal, temporary, and permanent memories are user-owned.
+    if scope in {PERSONAL, TEMPORARY, PERMANENT} and user_id is None:
         return False
 
     _init()
@@ -210,56 +267,72 @@ def remember(
         return False
 
     table = _table(scope)
+
+    if scope == KNOWLEDGE:
+        # Learned knowledge always gets a six-month last-use expiry.
+        expiry = expires_at or _months_after(now, KNOWLEDGE_RETENTION_MONTHS).isoformat()
+    else:
+        expiry = expires_at
+
     with _connect() as db:
-        if scope == TEMPORARY:
-            expiry = expires_at or _months_after(now, RETENTION_MONTHS).isoformat()
+        if user_id is None:
+            existing = db.execute(
+                f"SELECT id FROM {table} WHERE user_id IS NULL AND text=?",
+                (normalized,),
+            ).fetchone()
+        else:
             existing = db.execute(
                 f"SELECT id FROM {table} WHERE user_id=? AND text=?",
                 (user_id, normalized),
             ).fetchone()
-            values = (normalized, _compact(answer), source, importance, now_text, now_text, now_text, expiry)
-            if existing:
-                db.execute(
-                    f"""UPDATE {table}
-                        SET answer=?,source=?,importance=?,updated_at=?,last_used_at=?,expires_at=?
-                        WHERE id=?""",
-                    (values[1], values[2], values[3], values[4], values[6], values[7], existing["id"]),
-                )
-            else:
+
+        if existing:
+            db.execute(
+                f"""UPDATE {table}
+                    SET answer=?,source=?,importance=?,updated_at=?,last_used_at=?
+                    {",expires_at=?" if table in {"knowledge_memories", "temporary_memories"} else ""}
+                    WHERE id=?""",
+                (
+                    _compact(answer), source, importance, now_text, now_text,
+                    *(([expiry]) if table in {"knowledge_memories", "temporary_memories"} else []),
+                    existing["id"],
+                ),
+            )
+        else:
+            if table in {"knowledge_memories", "temporary_memories"}:
                 db.execute(
                     f"""INSERT INTO {table}
                         (user_id,text,answer,source,importance,created_at,updated_at,last_used_at,expires_at)
                         VALUES (?,?,?,?,?,?,?,?,?)""",
-                    (user_id, *values),
-                )
-        else:
-            user_clause = "user_id=?" if user_id is not None else "user_id IS NULL"
-            params = (user_id, normalized) if user_id is not None else (normalized,)
-            existing = db.execute(
-                f"SELECT id FROM {table} WHERE {user_clause} AND text=?",
-                params,
-            ).fetchone()
-            if existing:
-                db.execute(
-                    f"""UPDATE {table}
-                        SET answer=?,source=?,importance=?,updated_at=?,last_used_at=?
-                        WHERE id=?""",
-                    (_compact(answer), source, importance, now_text, now_text, existing["id"]),
+                    (
+                        user_id, normalized, _compact(answer), source, importance,
+                        now_text, now_text, now_text, expiry,
+                    ),
                 )
             else:
                 db.execute(
                     f"""INSERT INTO {table}
                         (user_id,text,answer,source,importance,created_at,updated_at,last_used_at)
                         VALUES (?,?,?,?,?,?,?,?)""",
-                    (user_id,normalized,_compact(answer),source,importance,now_text,now_text,now_text),
+                    (
+                        user_id, normalized, _compact(answer), source, importance,
+                        now_text, now_text, now_text,
+                    ),
                 )
         db.commit()
     return True
 
 
-def search(scope: str, user_id: Optional[int], query: str, top_k: int = 3, min_score: float = 0.40) -> List[Dict[str, Any]]:
+def search(
+    scope: str,
+    user_id: Optional[int],
+    query: str,
+    top_k: int = 3,
+    min_score: float = 0.40,
+) -> List[Dict[str, Any]]:
     if scope not in SCOPES or not str(query or "").strip():
         return []
+
     _init()
     _cleanup()
     normalized = _normalize(query)
@@ -270,7 +343,8 @@ def search(scope: str, user_id: Optional[int], query: str, top_k: int = 3, min_s
     with _connect() as db:
         if scope == KNOWLEDGE:
             rows = db.execute(
-                "SELECT * FROM knowledge_memories WHERE user_id IS NULL OR user_id=? ORDER BY importance DESC,id DESC",
+                "SELECT * FROM knowledge_memories WHERE user_id IS NULL OR user_id=? "
+                "ORDER BY importance DESC,id DESC",
                 (user_id,),
             ).fetchall()
         else:
@@ -284,13 +358,23 @@ def search(scope: str, user_id: Optional[int], query: str, top_k: int = 3, min_s
 
     docs = [row["text"] for row in rows]
     try:
-        vectorizer = TfidfVectorizer(analyzer="char_wb", ngram_range=(2, 5), min_df=1, sublinear_tf=True)
+        vectorizer = TfidfVectorizer(
+            analyzer="char_wb",
+            ngram_range=(2, 5),
+            min_df=1,
+            sublinear_tf=True,
+        )
         matrix = vectorizer.fit_transform(docs + [normalized])
         scores = cosine_similarity(matrix[-1], matrix[:-1])[0]
     except ValueError:
         return []
 
-    ranked = sorted(zip(rows, scores), key=lambda pair: (float(pair[1]), pair[0]["importance"]), reverse=True)
+    ranked = sorted(
+        zip(rows, scores),
+        key=lambda pair: (float(pair[1]), pair[0]["importance"]),
+        reverse=True,
+    )
+
     results = []
     for row, score in ranked[:top_k]:
         score = float(score)
@@ -310,15 +394,35 @@ def search(scope: str, user_id: Optional[int], query: str, top_k: int = 3, min_s
                 f"UPDATE {table} SET last_used_at=? WHERE id IN ({placeholders})",
                 (now, *ids),
             )
+            # Refresh the six-month window whenever learned knowledge is used.
+            if scope == KNOWLEDGE:
+                expiry = _months_after(
+                    datetime.fromisoformat(now),
+                    KNOWLEDGE_RETENTION_MONTHS,
+                ).isoformat()
+                db.execute(
+                    f"UPDATE {table} SET expires_at=? WHERE id IN ({placeholders})",
+                    (expiry, *ids),
+                )
             db.commit()
+
     return results
 
 
 def search_all(user_id: Optional[int], query: str, top_k: int = 3) -> List[Dict[str, Any]]:
     combined = []
-    for scope in (PERSONAL, TEMPORARY, KNOWLEDGE):
+    # Personal and permanent memories have priority over temporary context
+    # and automatically expiring learned knowledge.
+    for scope in (PERSONAL, PERMANENT, TEMPORARY, KNOWLEDGE):
         combined.extend(search(scope, user_id, query, top_k=top_k, min_score=0.40))
-    combined.sort(key=lambda item: (item["score"], item.get("importance", 0)), reverse=True)
+    combined.sort(
+        key=lambda item: (
+            item["memory_scope"] in {PERSONAL, PERMANENT},
+            item["score"],
+            item.get("importance", 0),
+        ),
+        reverse=True,
+    )
     return combined[:top_k]
 
 
@@ -331,19 +435,23 @@ def list_memories(scope: str, user_id: Optional[int], limit: int = 100) -> List[
     with _connect() as db:
         if scope == KNOWLEDGE:
             rows = db.execute(
-                f"SELECT * FROM {table} WHERE user_id IS NULL OR user_id=? ORDER BY id DESC LIMIT ?",
+                f"""SELECT * FROM {table}
+                    WHERE user_id IS NULL OR user_id=?
+                    ORDER BY id DESC LIMIT ?""",
                 (user_id, max(1, min(500, int(limit)))),
             ).fetchall()
         else:
             rows = db.execute(
-                f"SELECT * FROM {table} WHERE user_id=? ORDER BY id DESC LIMIT ?",
+                f"""SELECT * FROM {table}
+                    WHERE user_id=?
+                    ORDER BY id DESC LIMIT ?""",
                 (user_id, max(1, min(500, int(limit)))),
             ).fetchall()
     return [dict(row, memory_scope=scope) for row in rows]
 
 
 def delete_memory(scope: str, user_id: int, memory_id: int) -> bool:
-    if scope not in SCOPES or scope == KNOWLEDGE:
+    if scope not in SCOPES:
         return False
     _init()
     table = _table(scope)
@@ -361,7 +469,18 @@ def counts(user_id: int) -> Dict[str, int]:
     _cleanup()
     result = {}
     with _connect() as db:
-        result[PERSONAL] = int(db.execute("SELECT COUNT(*) FROM personal_memories WHERE user_id=?", (user_id,)).fetchone()[0])
-        result[TEMPORARY] = int(db.execute("SELECT COUNT(*) FROM temporary_memories WHERE user_id=?", (user_id,)).fetchone()[0])
-        result[KNOWLEDGE] = int(db.execute("SELECT COUNT(*) FROM knowledge_memories WHERE user_id IS NULL OR user_id=?", (user_id,)).fetchone()[0])
+        for scope in (PERSONAL, TEMPORARY, PERMANENT):
+            table = _table(scope)
+            result[scope] = int(
+                db.execute(
+                    f"SELECT COUNT(*) FROM {table} WHERE user_id=?",
+                    (user_id,),
+                ).fetchone()[0]
+            )
+        result[KNOWLEDGE] = int(
+            db.execute(
+                "SELECT COUNT(*) FROM knowledge_memories WHERE user_id IS NULL OR user_id=?",
+                (user_id,),
+            ).fetchone()[0]
+        )
     return result
