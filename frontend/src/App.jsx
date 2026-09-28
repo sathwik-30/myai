@@ -131,7 +131,7 @@ function App() {
         setError("");
     };
 
-    const newChat = async () => {
+    const newChat = async (initialPrompt = "") => {
         if (loading) return;
         setError("");
         try {
@@ -153,7 +153,7 @@ function App() {
             setChats((current) => [chat, ...current]);
             setActiveChat(chat);
             setMessages([]);
-            setInput("");
+            setInput(initialPrompt);
             setTimeout(() => textareaRef.current?.focus(), 0);
         } catch (err) {
             setError(`Could not create chat: ${err.message}`);
@@ -374,22 +374,22 @@ function App() {
                                 </div>
                             </div>
                             <div className="quick-grid">
-                                <button className="quick-card" onClick={() => { setInput("Help me learn a topic step by step"); newChat(); }}>
+                                <button className="quick-card" onClick={() => { newChat("Help me learn a topic step by step"); }}>
                                     <span className="quick-icon">✦</span>
                                     <strong>Learn something</strong>
                                     <small>Explain a topic clearly</small>
                                 </button>
-                                <button className="quick-card" onClick={() => { setInput("Help me debug my code"); newChat(); }}>
+                                <button className="quick-card" onClick={() => { newChat("Help me debug my code"); }}>
                                     <span className="quick-icon">⌘</span>
                                     <strong>Work on code</strong>
                                     <small>Debug, design, or improve</small>
                                 </button>
-                                <button className="quick-card" onClick={() => { setInput("Help me research this topic"); newChat(); }}>
+                                <button className="quick-card" onClick={() => { newChat("Help me research this topic"); }}>
                                     <span className="quick-icon">⌕</span>
                                     <strong>Research</strong>
                                     <small>Use knowledge and the web</small>
                                 </button>
-                                <button className="quick-card" onClick={() => { setInput("Help me plan my next task"); newChat(); }}>
+                                <button className="quick-card" onClick={() => { newChat("Help me plan my next task"); }}>
                                     <span className="quick-icon">✓</span>
                                     <strong>Plan work</strong>
                                     <small>Break a goal into steps</small>
