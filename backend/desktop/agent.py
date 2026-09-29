@@ -1,5 +1,6 @@
 import os
 import platform
+import shutil
 import subprocess
 import time
 from typing import Any
@@ -33,12 +34,39 @@ class DesktopAgent:
     """Explicit Windows desktop-control primitives."""
 
     SUPPORTED_APPS = {
-        "notepad": "notepad.exe",
-        "calculator": "calc.exe",
-        "paint": "mspaint.exe",
-        "explorer": "explorer.exe",
-        "terminal": "wt.exe",
-        "cmd": "cmd.exe",
+        "notepad": ["notepad.exe"],
+        "calculator": ["calc.exe"],
+        "paint": ["mspaint.exe"],
+        "explorer": ["explorer.exe"],
+        "terminal": ["wt.exe"],
+        "cmd": ["cmd.exe"],
+        "chrome": [
+            "chrome.exe",
+            os.path.expandvars(r"%ProgramFiles%\Google\Chrome\Application\chrome.exe"),
+            os.path.expandvars(r"%ProgramFiles(x86)%\Google\Chrome\Application\chrome.exe"),
+            os.path.expandvars(r"%LocalAppData%\Google\Chrome\Application\chrome.exe"),
+        ],
+        "google chrome": [
+            "chrome.exe",
+            os.path.expandvars(r"%ProgramFiles%\Google\Chrome\Application\chrome.exe"),
+            os.path.expandvars(r"%ProgramFiles(x86)%\Google\Chrome\Application\chrome.exe"),
+            os.path.expandvars(r"%LocalAppData%\Google\Chrome\Application\chrome.exe"),
+        ],
+        "vscode": [
+            "code.exe",
+            os.path.expandvars(r"%LocalAppData%\Programs\Microsoft VS Code\Code.exe"),
+            os.path.expandvars(r"%ProgramFiles%\Microsoft VS Code\Code.exe"),
+        ],
+        "vs code": [
+            "code.exe",
+            os.path.expandvars(r"%LocalAppData%\Programs\Microsoft VS Code\Code.exe"),
+            os.path.expandvars(r"%ProgramFiles%\Microsoft VS Code\Code.exe"),
+        ],
+        "visual studio code": [
+            "code.exe",
+            os.path.expandvars(r"%LocalAppData%\Programs\Microsoft VS Code\Code.exe"),
+            os.path.expandvars(r"%ProgramFiles%\Microsoft VS Code\Code.exe"),
+        ],
     }
 
     def __init__(self):
@@ -106,14 +134,26 @@ class DesktopAgent:
         time.sleep(0.15)
         return {"title": window.title}
 
+    def _resolve_executable(self, app: str) -> str:
+        candidates = self.SUPPORTED_APPS.get(app.strip().lower())
+        if not candidates:
+            raise DesktopAgentError(f"App '{app}' is not in the safe application allowlist.")
+
+        for candidate in candidates:
+            if os.path.isabs(candidate) and os.path.isfile(candidate):
+                return candidate
+            resolved = shutil.which(candidate)
+            if resolved:
+                return resolved
+
+        raise DesktopAgentError(
+            f"App '{app}' is allowed but its executable was not found on this Windows installation."
+        )
+
     def open_app(self, app: str) -> dict[str, Any]:
         self._require_windows()
         key = app.strip().lower()
-        executable = self.SUPPORTED_APPS.get(key)
-        if not executable:
-            raise DesktopAgentError(
-                f"App '{app}' is not in the safe application allowlist."
-            )
+        executable = self._resolve_executable(key)
         process = subprocess.Popen(
             [executable],
             shell=False,
@@ -121,7 +161,45 @@ class DesktopAgent:
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
-        return {"app": key, "pid": process.pid}
+        return {"app": key, "pid": process.pid, "executable": executable}
+
+    def close_app(self, app: str) -> dict[str, Any]:
+        self._require_windows()
+        self._require(pygetwindow, "PyGetWindow")
+        key = app.strip().lower()
+        title_terms = {
+            "chrome": ["chrome"],
+            "google chrome": ["chrome"],
+            "vscode": ["visual studio code"],
+            "vs code": ["visual studio code"],
+            "visual studio code": ["visual studio code"],
+            "notepad": ["notepad"],
+            "paint": ["paint"],
+            "calculator": ["calculator"],
+            "explorer": ["file explorer"],
+        }.get(key, [key])
+
+        matches = []
+        for window in pygetwindow.getAllWindows():
+            title = (window.title or "").strip()
+            lowered = title.casefold()
+            if title and any(term in lowered for term in title_terms):
+                matches.append(window)
+
+        if not matches:
+            raise DesktopAgentError(f"No open window found for '{app}'.")
+
+        closed = 0
+        for window in matches:
+            try:
+                window.close()
+                closed += 1
+            except Exception:
+                continue
+
+        if not closed:
+            raise DesktopAgentError(f"Could not close '{app}'.")
+        return {"app": key, "closed_windows": closed}
 
     def click(self, x: int, y: int, button: str = "left") -> dict[str, Any]:
         self._require_windows()
