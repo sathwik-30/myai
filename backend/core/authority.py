@@ -1,11 +1,11 @@
 """Creator/host authority model for Medha.
 
-The creator defines the policy; the host receives the highest runtime authority
-below the creator. Medha itself cannot promote its own authority or rewrite the
-authority source of truth.
+Identity for privileged control is bound to explicit configuration rather than
+assuming that every authenticated account is the host.
 """
+import os
 from dataclasses import dataclass, field
-from typing import Dict, Iterable
+from typing import Dict
 
 
 @dataclass(frozen=True)
@@ -61,10 +61,21 @@ class AuthorityPolicy:
 authority_policy = AuthorityPolicy()
 
 
-def authority_for(principal: str) -> Authority:
-    normalized = str(principal or "").strip().lower()
-    if normalized in {"creator", "root"}:
+def configured_host_id() -> str | None:
+    value = os.getenv("MEDHA_HOST_USER_ID", "").strip()
+    return value or None
+
+
+def configured_creator_id() -> str | None:
+    value = os.getenv("MEDHA_CREATOR_USER_ID", "").strip()
+    return value or None
+
+
+def authority_for_user(user: dict) -> Authority:
+    """Resolve authority from configured principal IDs, never display names."""
+    subject = str(user.get("sub", "")).strip()
+    if configured_creator_id() and subject == configured_creator_id():
         return CREATOR
-    if normalized in {"host", "primary_host", "user"}:
+    if configured_host_id() and subject == configured_host_id():
         return HOST
     return MEDHA
