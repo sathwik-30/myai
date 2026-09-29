@@ -1,11 +1,10 @@
 """Runtime loader for a promoted local decoder checkpoint.
 
-Training checkpoints are never used automatically. A checkpoint must be copied
-to models/production/medha-small.pt before this runtime exposes it.
+A training checkpoint is never used automatically. Promotion is an explicit
+quality-gated operation, and tokenizer/model vocabulary must match exactly.
 """
 from pathlib import Path
 import torch
-
 from backend.model.architecture.decoder import MedhaDecoderLM
 from backend.model.tokenizer.persistent import PersistentTokenizer
 from backend.model.config import ModelConfig
@@ -34,13 +33,19 @@ class LocalDecoderRuntime:
             config = ModelConfig(**payload["config"])
             tokenizer = PersistentTokenizer()
             tokenizer.load()
-            if len(tokenizer.tokenizer.vocab) > config.vocab_size:
-                raise RuntimeError("Tokenizer vocabulary is larger than checkpoint vocabulary.")
+            vocab_size = len(tokenizer.tokenizer.vocab)
+            if vocab_size != config.vocab_size:
+                raise RuntimeError(
+                    f"Tokenizer/model vocabulary mismatch: tokenizer={vocab_size}, model={config.vocab_size}."
+                )
+            training = payload.get("training", {})
+            validation_loss = training.get("validation_loss")
+            if validation_loss is None or not torch.isfinite(torch.tensor(float(validation_loss))):
+                raise RuntimeError("Production checkpoint has no finite validation loss.")
             model = MedhaDecoderLM(config)
-            model.load_state_dict(payload["state_dict"])
+            model.load_state_dict(payload["state_dict"], strict=True)
             model.eval()
-            self.model = model
-            self.tokenizer = tokenizer
+            self.model, self.tokenizer = model, tokenizer
         except Exception as exc:
             self.model = None
             self.tokenizer = None
@@ -52,24 +57,18 @@ class LocalDecoderRuntime:
             raise RuntimeError(self.error or "Local decoder is unavailable.")
         if not str(prompt or "").strip():
             return ""
-        ids = self.tokenizer.encode(prompt)
-        ids = ids[-self.model.config.max_length:]
-        generated = list(ids)
-
+        original_ids = self.tokenizer.encode(prompt)
+        generated = list(original_ids[-self.model.config.max_length:])
         for _ in range(max(1, min(int(max_new_tokens), 256))):
             context = torch.tensor([generated[-self.model.config.max_length:]], dtype=torch.long)
-            logits = self.model(context)[0, -1]
-            temperature = max(0.1, float(temperature))
-            logits = logits / temperature
+            logits = self.model(context)[0, -1] / max(0.1, float(temperature))
             k = max(1, min(int(top_k), logits.numel()))
             values, indices = torch.topk(logits, k)
-            probs = torch.softmax(values, dim=-1)
-            next_id = int(indices[torch.multinomial(probs, 1)].item())
+            next_id = int(indices[torch.multinomial(torch.softmax(values, -1), 1)].item())
             generated.append(next_id)
             if next_id == self.tokenizer.tokenizer.vocab.token_to_id.get("<EOS>"):
                 break
-
-        new_ids = generated[len(ids):]
+        new_ids = generated[len(original_ids[-self.model.config.max_length:]):]
         return self.tokenizer.decode(new_ids).strip()
 
 _runtime = None
