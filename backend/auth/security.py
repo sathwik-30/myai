@@ -5,18 +5,35 @@ import json
 import os
 import secrets
 import time
+from pathlib import Path
+from typing import Any, Dict
 
 from dotenv import load_dotenv
 
 load_dotenv()
-from typing import Any, Dict
 
-SECRET = os.getenv("MEDHA_AUTH_SECRET")
-if not SECRET:
-    # Never use a known shared signing key. A missing local secret generates a
-    # process-local key, which safely invalidates tokens on backend restart.
-    SECRET = secrets.token_urlsafe(48)
-SECRET = SECRET.encode()
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+SECRET_PATH = PROJECT_ROOT / "backend/auth/data/.auth_secret"
+
+def _load_secret() -> bytes:
+    configured = os.getenv("MEDHA_AUTH_SECRET")
+    if configured:
+        return configured.encode()
+    SECRET_PATH.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        value = SECRET_PATH.read_text(encoding="utf-8").strip()
+    except OSError:
+        value = ""
+    if not value:
+        value = secrets.token_urlsafe(64)
+        SECRET_PATH.write_text(value, encoding="utf-8")
+        try:
+            os.chmod(SECRET_PATH, 0o600)
+        except OSError:
+            pass
+    return value.encode()
+
+SECRET = _load_secret()
 TOKEN_TTL = 60 * 60 * 24 * 7
 
 def _b64(data: bytes) -> str:
@@ -41,10 +58,11 @@ def verify_password(password: str, stored: str) -> bool:
         return False
 
 def create_token(user_id: int, username: str, role: str = "user") -> str:
+    now = int(time.time())
     header = _b64(json.dumps({"alg": "HS256", "typ": "JWT"}, separators=(",", ":")).encode())
     payload = _b64(json.dumps({
         "sub": user_id, "username": username, "role": role,
-        "iat": int(time.time()), "exp": int(time.time()) + TOKEN_TTL,
+        "iat": now, "exp": now + TOKEN_TTL,
     }, separators=(",", ":")).encode())
     signature = _b64(hmac.new(SECRET, (header + "." + payload).encode(), hashlib.sha256).digest())
     return header + "." + payload + "." + signature
