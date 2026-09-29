@@ -60,11 +60,11 @@ class MedhaDecoderLM(nn.Module):
         self.lm_head.weight = self.token_embedding.weight
 
     def forward(self, input_ids: torch.Tensor) -> torch.Tensor:
+        if input_ids.ndim != 2:
+            raise ValueError("input_ids must have shape [batch, sequence]")
         if input_ids.size(1) > self.config.max_length:
             raise ValueError("Input exceeds model context length")
-        positions = torch.arange(
-            input_ids.size(1), device=input_ids.device
-        ).unsqueeze(0)
+        positions = torch.arange(input_ids.size(1), device=input_ids.device).unsqueeze(0)
         x = self.token_embedding(input_ids) + self.position_embedding(positions)
         for block in self.blocks:
             x = block(x)
