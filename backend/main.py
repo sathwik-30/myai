@@ -5,15 +5,17 @@ from backend.api.chat import router
 from backend.api.auth import router as auth_router
 from backend.api.chats import router as chats_router
 from backend.api.desktop import router as desktop_router
+from backend.api.authority import router as authority_router
 from backend.auth.dependencies import current_user
 from backend.chats.store import init_chat_tables
 from backend.memory.layers import counts, delete_memory, list_memories, SCOPES
 from backend.llm.router import router as model_router
+from backend.core.authority import authority_policy
 
 app = FastAPI(
     title="Medha AI",
-    version="1.1.0",
-    description="Local personal AI assistant backend",
+    version="1.2.0",
+    description="Independent local personal AI assistant with creator/host authority.",
 )
 
 app.add_middleware(
@@ -31,6 +33,7 @@ app.include_router(router, prefix="/api")
 app.include_router(auth_router, prefix="/api")
 app.include_router(chats_router, prefix="/api")
 app.include_router(desktop_router, prefix="/api")
+app.include_router(authority_router, prefix="/api")
 init_chat_tables()
 
 
@@ -40,6 +43,7 @@ def home():
         "service": "Medha",
         "status": "online",
         "version": app.version,
+        "authority": "creator-host",
     }
 
 
@@ -77,7 +81,10 @@ def remove_memory(
     user=Depends(current_user),
 ):
     if memory_scope not in SCOPES or memory_scope == "knowledge":
-        raise HTTPException(status_code=400, detail="Only personal and temporary memory can be deleted here")
+        raise HTTPException(
+            status_code=400,
+            detail="Only personal and temporary memory can be deleted here",
+        )
 
     if not delete_memory(memory_scope, int(user["sub"]), memory_id):
         raise HTTPException(status_code=404, detail="Memory not found")
@@ -96,5 +103,8 @@ def health():
         "service": "medha-backend",
         "memory_layers": True,
         "runtime_model": "local-memory",
-        "ollama": False,\n        "model_provider": model_router.provider_name,\n        "model_available": model_router.available(),
+        "ollama": False,
+        "model_provider": model_router.provider_name,
+        "model_available": model_router.available(),
+        "authority": authority_policy.snapshot(),
     }
