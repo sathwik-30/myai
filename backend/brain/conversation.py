@@ -4,11 +4,9 @@ import re
 from backend.agent.autonomy import autonomy
 from backend.agent.kill_switch import require_enabled
 from backend.agent.permissions import PermissionProfile
-from backend.auth.dependencies import current_user
 from backend.brain.context import ConversationContext
 from backend.brain.intent import classify, understand
 from backend.brain.response import generate_response
-from backend.chats.store import get_user
 from backend.core.policy import apply_override
 from backend.desktop.agent import DesktopAgent, DesktopAgentError
 from backend.memory.evaluator import evaluate_memory
@@ -50,8 +48,6 @@ class ConversationEngine:
         if value in aliases:
             return aliases[value]
 
-        # Learned personal associations can map natural concepts such as
-        # "my workspace" to a concrete application without hardcoded phrases.
         memory = self.memory.search_personal(target)
         if memory:
             answer = " ".join(str(memory.get("answer", "")).lower().split())
@@ -131,8 +127,9 @@ class ConversationEngine:
                     response = str(result)
                     source = "memory"
 
-                # Answer an unknown fact when the previous turn explicitly
-                # asked the user to supply it.
+                # If the previous turn explicitly asked the user for a missing
+                # fact, the next user response can become a personal memory.
+                learned_from_followup = False
                 if history and history[-1].get("role") == "assistant":
                     previous_answer = history[-1].get("message", "")
                     if previous_answer.startswith("I don't know that yet.") and message.strip():
@@ -148,40 +145,41 @@ class ConversationEngine:
                             )
                             response = "Got it. I'll remember that for our future conversations."
                             source = "memory_saved"
+                            learned_from_followup = True
 
-                elif classify(message) == "permanent":
-                    self.memory.learn_permanent(
-                        message,
-                        message,
-                        source="user",
-                        importance=5,
-                    )
-                    response = "Got it. I'll keep that in my permanent memory."
-                    source = "permanent_memory_saved"
-
-                elif classify(message) in {"memory", "personal"}:
-                    self.memory.learn_personal(
-                        message,
-                        message,
-                        importance=5 if classify(message) == "memory" else 4,
-                    )
-                    response = (
-                        "Got it. I'll remember that."
-                        if classify(message) == "memory"
-                        else "Got it. I'll keep that in mind for future conversations."
-                    )
-                    source = "memory_saved"
-
-                else:
-                    decision = evaluate_memory(message, response, source)
-                    if decision["save"]:
-                        self.memory.learn(
+                if not learned_from_followup:
+                    intent = parsed["intent"]
+                    if intent == "permanent":
+                        self.memory.learn_permanent(
                             message,
-                            response,
-                            source=source,
-                            importance=decision["importance"],
-                            memory_type=decision["memory_type"],
+                            message,
+                            source="user",
+                            importance=5,
                         )
+                        response = "Got it. I'll keep that in my permanent memory."
+                        source = "permanent_memory_saved"
+                    elif intent in {"memory", "personal"}:
+                        self.memory.learn_personal(
+                            message,
+                            message,
+                            importance=5 if intent == "memory" else 4,
+                        )
+                        response = (
+                            "Got it. I'll remember that."
+                            if intent == "memory"
+                            else "Got it. I'll keep that in mind for future conversations."
+                        )
+                        source = "memory_saved"
+                    else:
+                        decision = evaluate_memory(message, response, source)
+                        if decision["save"]:
+                            self.memory.learn(
+                                message,
+                                response,
+                                source=source,
+                                importance=decision["importance"],
+                                memory_type=decision["memory_type"],
+                            )
 
         except Exception:
             logger.exception("Conversation generation failed; using local fallback")
