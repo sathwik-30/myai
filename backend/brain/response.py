@@ -109,6 +109,30 @@ def generate_response(message, context, knowledge, search_manager, user_id=None)
             "confidence": parsed["confidence"],
         }
 
+    # General conversation can use the promoted local decoder. It is deliberately
+    # last in the chain so privileged actions, memory, and factual retrieval do
+    # not depend on free-form generation.
+    if intent in {"general", "casual"}:
+        try:
+            from backend.model.runtime import get_decoder_runtime
+            decoder = get_decoder_runtime()
+            if decoder.available:
+                prompt = (
+                    "You are Medha, an independent personal AI assistant. "
+                    "Answer clearly and honestly. Do not claim actions you did not perform.\n"
+                    f"User: {message}\nMedha:"
+                )
+                generated = decoder.generate(prompt, max_new_tokens=96, temperature=0.7, top_k=20)
+                if generated.strip():
+                    return {
+                        "answer": generated.strip(),
+                        "source": "local_decoder",
+                        "intent": intent,
+                        "confidence": parsed["confidence"],
+                    }
+        except Exception:
+            pass
+
     return {
         "answer": f"I couldn't find reliable information about that yet, {OWNER_NAME}.",
         "source": "fallback",
