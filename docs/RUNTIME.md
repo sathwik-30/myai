@@ -29,3 +29,20 @@ The existing development commands remain available. The launcher is an additiona
 This runtime is the first layer. A future native desktop shell can use the same process-manager contract to provide a native Medha window, system tray, Windows startup, global hotkey, native notifications, and crash recovery UI.
 
 Medha.bat is not a compiled executable yet. It is the one-click entry point while the native shell is being built.
+
+
+## Local conversational model
+
+Medha does not require a cloud LLM. For stronger natural conversation before a
+promoted Medha decoder checkpoint is available, install Ollama locally and pull
+a local model:
+
+    ollama pull llama3.2:3b
+
+The backend automatically checks the local Ollama service at
+http://127.0.0.1:11434. Override the model with MEDHA_OLLAMA_MODEL in .env when
+needed.
+
+The model is used only for conversation generation. Desktop, memory, authority,
+and other privileged operations remain controlled by Medha's own Python
+boundaries and are not delegated to the model.
