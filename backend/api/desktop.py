@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 
 from backend.auth.dependencies import current_user
 from backend.agent.permissions import PermissionProfile
+from backend.core.authority import authority_for_user, CREATOR, HOST
 from backend.desktop.agent import DesktopAgent, DesktopAgentError
 
 router = APIRouter(prefix="/desktop", tags=["desktop"])
@@ -22,6 +23,9 @@ def _remove_temp_file(path: str) -> None:
 
 
 def _require_desktop(user):
+    actor = authority_for_user(user)
+    if actor not in (CREATOR, HOST):
+        raise HTTPException(status_code=403, detail="Creator/host authority required for desktop control.")
     if not PermissionProfile.from_policy().can("desktop"):
         raise HTTPException(status_code=403, detail="Desktop capability is disabled by Medha authority policy.")
 
