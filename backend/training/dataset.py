@@ -2,11 +2,11 @@ from pathlib import Path
 
 
 def load_texts(root: str | Path = "data") -> list[str]:
-    """Load local training text without sending data to an external provider."""
+    """Load curated local training text without runtime artifacts or NLU JSONL."""
     root = Path(root)
     texts = []
     for path in root.rglob("*"):
-        if path.suffix.lower() in {".txt", ".md", ".jsonl"} and path.is_file():
+        if path.suffix.lower() in {".txt", ".md"} and path.is_file():
             try:
                 content = path.read_text(encoding="utf-8").strip()
             except (UnicodeDecodeError, OSError):
