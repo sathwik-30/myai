@@ -313,6 +313,32 @@ function App() {
         if (data.chats?.length) await openChat(data.chats[0].id);
     };
 
+    const changePassword = async () => {
+        const currentPassword = window.prompt("Current password");
+        if (!currentPassword) return;
+        const newPassword = window.prompt("New password (8+ characters)");
+        if (!newPassword) return;
+        try {
+            await jsonRequest("/auth/password/change", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
+            });
+            window.alert("Password changed successfully.");
+        } catch (err) {
+            setError(err.message);
+        }
+    };
+
+    const generateRecoveryCode = async () => {
+        try {
+            const data = await jsonRequest("/auth/password/recovery-code", { method: "POST" });
+            window.alert(`Save this recovery code somewhere safe. It will be needed if you forget your password:\n\n${data.recovery_code}`);
+        } catch (err) {
+            setError(err.message);
+        }
+    };
+
     const logout = () => {
         localStorage.removeItem("medha_token");
         localStorage.removeItem("medha_username");
@@ -357,6 +383,8 @@ function App() {
                 <div className="sidebar-bottom">
                     <div className="account"><span className="account-avatar">{username[0]?.toUpperCase()}</span><span>{username}</span></div>
                     <button className="side-action" onClick={renameActive} disabled={!activeChat}>Rename</button>
+                    <button className="side-action" onClick={changePassword}>Change password</button>
+                    <button className="side-action" onClick={generateRecoveryCode}>Recovery code</button>
                     <button className="side-action danger" onClick={deleteActive} disabled={!activeChat}>Delete</button>
                     <button className="side-action" onClick={logout}>Sign out</button>
                 </div>
