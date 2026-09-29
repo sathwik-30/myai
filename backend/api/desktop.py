@@ -112,11 +112,13 @@ def desktop_scroll(request: ScrollRequest, user=Depends(current_user)):
 
 @router.get("/processes")
 def desktop_processes(user=Depends(current_user)):
+    _require_desktop(user)
     return {"processes": _run(agent.processes)}
 
 
 @router.get("/screenshot")
 def desktop_screenshot(user=Depends(current_user)):
+    _require_desktop(user)
     fd, path = tempfile.mkstemp(prefix="medha-screen-", suffix=".png")
     os.close(fd)
     try:
