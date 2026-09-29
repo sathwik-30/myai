@@ -10,9 +10,13 @@ from backend.model.config import SMALL_CONFIG
 from backend.model.tokenizer.persistent import PersistentTokenizer
 from backend.training.dataset import load_texts, make_causal_examples
 
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
-def train(steps: int = 100, data_root: str = "data", checkpoint_dir: str = "models/checkpoints"):
-    texts = load_texts(data_root)
+
+def train(steps: int = 100, data_root: str | None = None, checkpoint_dir: str | None = None):
+    data_path = Path(data_root) if data_root is not None else PROJECT_ROOT / "data"
+    checkpoint_path = Path(checkpoint_dir) if checkpoint_dir is not None else PROJECT_ROOT / "models/checkpoints"
+    texts = load_texts(data_path)
     if not texts:
         raise ValueError("No local training text found.")
 
@@ -46,7 +50,7 @@ def train(steps: int = 100, data_root: str = "data", checkpoint_dir: str = "mode
         torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
         optimizer.step()
 
-    output = Path(checkpoint_dir)
+    output = checkpoint_path
     output.mkdir(parents=True, exist_ok=True)
     checkpoint = output / "medha-small.pt"
     torch.save({"config": asdict(config), "state_dict": model.state_dict()}, checkpoint)
