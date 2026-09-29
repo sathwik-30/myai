@@ -3,6 +3,7 @@
 Privileged authority is resolved from authenticated principal IDs configured
 outside model-generated text. The assistant cannot grant itself authority.
 """
+
 import os
 from dataclasses import dataclass, field
 
@@ -71,8 +72,19 @@ def configured_creator_id() -> str | None:
 
 def authority_for_user(user: dict) -> Authority:
     subject = str(user.get("sub", "")).strip()
+    role = str(user.get("role", "")).strip().lower()
+
+    # Explicit environment configuration has highest priority.
     if configured_creator_id() and subject == configured_creator_id():
         return CREATOR
     if configured_host_id() and subject == configured_host_id():
         return HOST
+
+    # The bootstrap account can operate as creator without requiring a
+    # manually copied numeric user ID into the environment.
+    if role in {"creator", "admin"}:
+        return CREATOR
+    if role == "host":
+        return HOST
+
     return MEDHA
