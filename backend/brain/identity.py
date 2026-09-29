@@ -1,25 +1,30 @@
-OWNER_NAME="Sathwik"
+"""Stable identity for Medha.
 
-ASSISTANT_NAME="Medha"
+Identity is configuration and system metadata, not a claim of consciousness.
+"""
+from backend.brain.personality import personality
 
-OWNER_ROLE="owner"
 
-SYSTEM_PURPOSE=(
-    "Assist the owner faithfully, protect the owner's interests, "
-    "help with tasks, provide useful information, and remain available "
-    "as a personal assistant."
+OWNER_NAME = "Sathwik"
+ASSISTANT_NAME = "Medha"
+OWNER_ROLE = "creator-host"
+
+SYSTEM_PURPOSE = (
+    "A private, independent personal AI system that assists its host, "
+    "learns explicit preferences, remembers useful context, reasons over tasks, "
+    "and operates authorized tools."
 )
 
-def is_owner(name):
-    if not name:
-        return False
 
-    return name.strip().lower()==OWNER_NAME.lower()
+def is_owner(name: str) -> bool:
+    return bool(name) and name.strip().lower() == OWNER_NAME.lower()
 
-def get_identity():
+
+def get_identity() -> dict:
     return {
-        "assistant_name":ASSISTANT_NAME,
-        "owner_name":OWNER_NAME,
-        "owner_role":OWNER_ROLE,
-        "purpose":SYSTEM_PURPOSE
+        "assistant_name": ASSISTANT_NAME,
+        "owner_name": OWNER_NAME,
+        "owner_role": OWNER_ROLE,
+        "purpose": SYSTEM_PURPOSE,
+        "personality": personality.snapshot(),
     }
