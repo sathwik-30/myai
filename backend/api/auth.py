@@ -2,7 +2,10 @@ from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel, Field
 
 from backend.auth.security import create_token, hash_password, verify_password
-from backend.auth.dependencies import current_user\nfrom backend.chats.store import create_user, get_user, has_admin, update_password\nimport hashlib\nimport secrets
+from backend.auth.dependencies import current_user
+from backend.chats.store import create_user, get_user, has_admin, update_password
+import hashlib
+import secrets
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -16,7 +19,9 @@ class AuthRequest(BaseModel):
 def register(request: AuthRequest):
     username = request.username.strip().lower()
     role = "creator" if not has_admin() else "user"
-    recovery_code = secrets.token_urlsafe(18)\n    recovery_code_hash = hashlib.sha256(recovery_code.encode()).hexdigest()\n    user_id = create_user(username, hash_password(request.password), role=role, recovery_code_hash=recovery_code_hash)
+    recovery_code = secrets.token_urlsafe(18)
+    recovery_code_hash = hashlib.sha256(recovery_code.encode()).hexdigest()
+    user_id = create_user(username, hash_password(request.password), role=role, recovery_code_hash=recovery_code_hash)
     if not user_id:
         raise HTTPException(status_code=409, detail="Username already exists")
 
