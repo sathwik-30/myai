@@ -92,7 +92,7 @@ function AuthScreen({ onLogin }) {
                 return;
             }
 
-            const data = await jsonRequest(\`/auth/\${mode}\`, {
+            const data = await jsonRequest(`/auth/${mode}`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ username, password }),
@@ -101,7 +101,7 @@ function AuthScreen({ onLogin }) {
             localStorage.setItem("medha_username", data.username);
 
             if (mode === "register" && data.recovery_code) {
-                setNotice(\`Account created. Save your recovery code now: \${data.recovery_code}\`);
+                window.alert(`Account created. Save this recovery code somewhere safe:\n\n${data.recovery_code}`);
             }
             onLogin(data.username);
         } catch (err) {
