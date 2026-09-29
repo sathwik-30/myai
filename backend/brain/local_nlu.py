@@ -69,13 +69,13 @@ class LocalLanguageEngine:
         self.classifier = LogisticRegression(max_iter=1200, class_weight="balanced", random_state=42)
         self.classifier.fit(matrix, labels)
         os.makedirs(MODEL_DIR, exist_ok=True)
-        joblib.dump({"vectorizer": self.vectorizer, "classifier": self.classifier}, MODEL_PATH)
+        joblib.dump({"version": 2, "vectorizer": self.vectorizer, "classifier": self.classifier}, MODEL_PATH)
 
     def _load_or_train(self) -> None:
         try:
             if os.path.exists(MODEL_PATH):
                 payload = joblib.load(MODEL_PATH)
-                self.vectorizer, self.classifier = payload["vectorizer"], payload["classifier"]
+                if payload.get("version") != 2:\n                    raise ValueError("Outdated NLU artifact")\n                self.vectorizer, self.classifier = payload["vectorizer"], payload["classifier"]
                 return
         except Exception:
             self.vectorizer = self.classifier = None
