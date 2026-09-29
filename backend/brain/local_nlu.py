@@ -75,7 +75,9 @@ class LocalLanguageEngine:
         try:
             if os.path.exists(MODEL_PATH):
                 payload = joblib.load(MODEL_PATH)
-                if payload.get("version") != 2:\n                    raise ValueError("Outdated NLU artifact")\n                self.vectorizer, self.classifier = payload["vectorizer"], payload["classifier"]
+                if payload.get("version") != 2:
+                    raise ValueError("Outdated NLU artifact")
+                self.vectorizer, self.classifier = payload["vectorizer"], payload["classifier"]
                 return
         except Exception:
             self.vectorizer = self.classifier = None
