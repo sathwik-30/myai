@@ -100,6 +100,8 @@ def remove_memory(
 
 @app.get("/api/health")
 def health():
+    nlu_available = get_language_engine().available
+    decoder_available = checkpoint_exists()
     return {
         "status": "ok",
         "service": "medha-backend",
@@ -107,8 +109,8 @@ def health():
         "runtime_model": "local-nlu",
         "ollama": False,
         "model_provider": model_router.provider_name,
-        "nlu_available": get_language_engine().available,
-        "trainable_decoder_checkpoint": checkpoint_exists(),
-        "model_available": get_language_engine().available,
+        "runtime_nlu_available": nlu_available,
+        "trainable_decoder_checkpoint": decoder_available,
+        "model_available": decoder_available,
         "authority": authority_policy.snapshot(),
     }
