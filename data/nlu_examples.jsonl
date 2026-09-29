@@ -46,3 +46,35 @@
 {"text":"thanks","intent":"thanks"}
 {"text":"thank you","intent":"thanks"}
 {"text":"that helped","intent":"thanks"}
+{"text":"hey medha","intent":"greeting"}
+{"text":"yo medha","intent":"greeting"}
+{"text":"hello there","intent":"greeting"}
+{"text":"what's up","intent":"casual"}
+{"text":"how is it going","intent":"casual"}
+{"text":"talk to me","intent":"casual"}
+{"text":"can we chat","intent":"casual"}
+{"text":"tell me something interesting","intent":"general"}
+{"text":"what do you think about this","intent":"general"}
+{"text":"can you open chrome for me","intent":"desktop"}
+{"text":"please open google chrome","intent":"desktop"}
+{"text":"could you launch chrome","intent":"desktop"}
+{"text":"start chrome please","intent":"desktop"}
+{"text":"open the browser","intent":"desktop"}
+{"text":"launch my browser","intent":"desktop"}
+{"text":"close google chrome","intent":"desktop"}
+{"text":"please close chrome","intent":"desktop"}
+{"text":"open vscode please","intent":"desktop"}
+{"text":"launch visual studio code","intent":"desktop"}
+{"text":"start my coding workspace","intent":"desktop"}
+{"text":"can you help me with this code","intent":"technical"}
+{"text":"why is my python code failing","intent":"technical"}
+{"text":"explain this error to me","intent":"technical"}
+{"text":"what is machine learning","intent":"knowledge"}
+{"text":"why is the sky blue","intent":"knowledge"}
+{"text":"who invented the computer","intent":"knowledge"}
+{"text":"look up the latest information","intent":"research"}
+{"text":"search for this online","intent":"research"}
+{"text":"can you research this for me","intent":"research"}
+{"text":"i like programming","intent":"personal"}
+{"text":"my favorite editor is vscode","intent":"personal"}
+{"text":"remember that i use vscode","intent":"memory"}
