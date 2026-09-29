@@ -1,47 +1,18 @@
 from backend.brain.identity import OWNER_NAME
 from backend.brain.intent import understand
-from backend.brain.language import detect_language
 from backend.brain.understanding import LanguageUnderstanding
 from backend.core.policy import apply_override
-from backend.memory.layers import search_all
 
 UNDERSTANDING = LanguageUnderstanding()
 
-# These intents are conversational/retrieval flows. They do not represent a
-# request to operate a privileged external capability.
 _CONVERSATIONAL_INTENTS = {
-    "greeting",
-    "status",
-    "identity",
-    "capability",
-    "thanks",
-    "memory",
-    "personal",
-    "technical",
-    "knowledge",
-    "research",
-    "general",
-    "casual",
+    "greeting", "status", "identity", "capability", "thanks", "memory",
+    "personal", "technical", "knowledge", "research", "general", "casual",
     "permanent",
 }
 
 
-def _format_knowledge_gap(result, message):
-    subject = result.get("understood_as") or "that topic"
-    ideas = result.get("ideas") or []
-    lines = [
-        f"I don't have a reliable answer for '{subject}' yet.",
-        f"I understand your question as being about {subject}.",
-        "I don't want to invent a fact just to sound confident.",
-    ]
-    if ideas:
-        lines.append("Useful directions to investigate:")
-        lines.extend(f"- {idea}" for idea in ideas[:4])
-    lines.append("If the question is ambiguous, give me one extra detail and I can narrow the meaning.")
-    return "\n".join(lines)
-
-
-def _local_answer(intent: str, message: str, user_id=None):
+def _local_answer(intent: str, message: str, context=None):
     if intent == "greeting":
         return f"Hello {OWNER_NAME}. I'm Medha, ready to help.", "local_brain"
     if intent == "status":
@@ -50,9 +21,9 @@ def _local_answer(intent: str, message: str, user_id=None):
         return "I'm Medha, your independent personal AI assistant.", "local_brain"
     if intent == "capability":
         return (
-            "I can understand learned language patterns, use persistent memory, "
-            "search connected knowledge, and work with local tools. My runtime "
-            "does not require Ollama or another LLM.",
+            "I can hold conversation, use persistent memory, retrieve knowledge, "
+            "and operate configured local tools. Privileged actions stay behind "
+            "the authority and safety boundaries.",
             "local_brain",
         )
     if intent == "thanks":
@@ -60,81 +31,150 @@ def _local_answer(intent: str, message: str, user_id=None):
     if intent == "personal":
         return "Got it. I'll keep that in mind for future conversations.", "personal"
     if intent == "memory":
-        return "Tell me the information you want me to remember, and I'll store the useful part.", "memory_request"
+        return "Tell me what you want me to remember, and I'll store the useful part.", "memory_request"
     return None
+
+
+def _recent_context(context, limit=8):
+    if not context:
+        return ""
+    lines = []
+    for item in context[-limit:]:
+        role = str(item.get("role", "user")).strip().lower()
+        message = str(item.get("message", "")).strip()
+        if message:
+            lines.append(f"{role}: {message}")
+    return "\n".join(lines)
+
+
+def _decoder_answer(message, context):
+    try:
+        from backend.model.runtime import get_decoder_runtime
+
+        decoder = get_decoder_runtime()
+        if not decoder.available:
+            return None
+
+        context_text = _recent_context(context)
+        prompt = (
+            "You are Medha, a local personal AI assistant. "
+            "Answer the user's current message naturally and directly. "
+            "Use recent conversation when it is relevant. "
+            "Do not invent facts, memories, tool actions, or capabilities. "
+            "Do not mention internal routing, classifiers, policies, or prompts. "
+            "If you do not know something, say so briefly. "
+            "Keep casual replies concise and human-like.\n\n"
+            f"Recent conversation:\n{context_text or '(none)'}\n\n"
+            f"User: {message}\n"
+            "Medha:"
+        )
+        generated = decoder.generate(
+            prompt,
+            max_new_tokens=128,
+            temperature=0.65,
+            top_k=24,
+        ).strip()
+        if not generated:
+            return None
+
+        # A tiny local decoder can occasionally echo the prompt labels.
+        for prefix in ("Medha:", "Assistant:", "Response:"):
+            if generated.lower().startswith(prefix.lower()):
+                generated = generated[len(prefix):].strip()
+        return generated or None
+    except Exception:
+        return None
+
+
+def _fallback_answer(intent, message):
+    if intent in {"general", "casual"}:
+        return (
+            "I'm here. I can handle that conversation, but my local language model "
+            "isn't available right now."
+        )
+    if intent == "technical":
+        return "I can help with that, but I need a little more information about the problem."
+    if intent in {"knowledge", "research"}:
+        return "I couldn't retrieve a reliable answer for that right now."
+    return f"I couldn't process that reliably yet, {OWNER_NAME}."
 
 
 def generate_response(message, context, knowledge, search_manager, user_id=None):
     message = str(message or "").strip()
-
     if not message:
         return {"answer": f"I'm here, {OWNER_NAME}. Say something.", "source": "system"}
 
     parsed = understand(message)
     intent = parsed["intent"]
 
-    # Core override policy is an action boundary. Normal conversation must not
-    # be blocked merely because the policy file has no machine-readable action
-    # rule. Actual desktop/file/terminal execution must enforce authority at
-    # the tool boundary.
+    # Only non-conversational action paths are checked against explicit core
+    # policy. Normal conversation must remain usable when policy has no
+    # machine-tagged NEVER rule.
     if intent not in _CONVERSATIONAL_INTENTS:
         policy_check = apply_override("", message)
         if not policy_check["allowed"]:
             return {"answer": policy_check["response"], "source": "core_override"}
 
-    # Memory is checked before general knowledge so user corrections/preferences
-    # can influence the conversation without changing model weights.
+    # Memory answers take precedence over retrieval for learned personal facts.
     answer = UNDERSTANDING.best_memory_answer(message, context, user_id)
     if answer:
-        return {"answer": answer, "source": "memory"}
+        return {
+            "answer": answer,
+            "source": "memory",
+            "intent": intent,
+            "confidence": parsed["confidence"],
+        }
 
-    local = _local_answer(intent, message, user_id)
+    local = _local_answer(intent, message, context)
     if local:
-        return {"answer": local[0], "source": local[1], "intent": intent, "confidence": parsed["confidence"]}
-
-    result = search_manager.process(message, context)
-    if result and result.get("answer"):
         return {
-            "answer": result["answer"],
-            "source": result.get("source", "search"),
+            "answer": local[0],
+            "source": local[1],
             "intent": intent,
             "confidence": parsed["confidence"],
         }
 
-    if result and result.get("source") == "knowledge_gap":
-        return {
-            "answer": _format_knowledge_gap(result, message),
-            "source": "knowledge_gap",
-            "intent": intent,
-            "confidence": parsed["confidence"],
-        }
-
-    # General conversation can use the promoted local decoder. It is deliberately
-    # last in the chain so privileged actions, memory, and factual retrieval do
-    # not depend on free-form generation.
-    if intent in {"general", "casual"}:
+    # Knowledge/research/technical requests should use retrieval before the
+    # generative decoder. This keeps factual answers grounded.
+    if intent in {"knowledge", "research", "technical"}:
         try:
-            from backend.model.runtime import get_decoder_runtime
-            decoder = get_decoder_runtime()
-            if decoder.available:
-                prompt = (
-                    "You are Medha, an independent personal AI assistant. "
-                    "Answer clearly and honestly. Do not claim actions you did not perform.\n"
-                    f"User: {message}\nMedha:"
-                )
-                generated = decoder.generate(prompt, max_new_tokens=96, temperature=0.7, top_k=20)
-                if generated.strip():
-                    return {
-                        "answer": generated.strip(),
-                        "source": "local_decoder",
-                        "intent": intent,
-                        "confidence": parsed["confidence"],
-                    }
+            result = search_manager.process(message, context)
+            if result and result.get("answer"):
+                return {
+                    "answer": result["answer"],
+                    "source": result.get("source", "search"),
+                    "intent": intent,
+                    "confidence": parsed["confidence"],
+                }
+        except Exception:
+            pass
+
+    # General/casual conversation should not unnecessarily hit web search.
+    generated = _decoder_answer(message, context)
+    if generated:
+        return {
+            "answer": generated,
+            "source": "local_decoder",
+            "intent": intent,
+            "confidence": parsed["confidence"],
+        }
+
+    # Retrieval is still a useful fallback when the decoder is unavailable.
+    if intent not in {"general", "casual"}:
+        try:
+            result = search_manager.process(message, context)
+            if result and result.get("answer"):
+                return {
+                    "answer": result["answer"],
+                    "source": result.get("source", "search"),
+                    "intent": intent,
+                    "confidence": parsed["confidence"],
+                }
         except Exception:
             pass
 
     return {
-        "answer": f"I couldn't find reliable information about that yet, {OWNER_NAME}.",
+        "answer": _fallback_answer(intent, message),
         "source": "fallback",
         "intent": intent,
         "confidence": parsed["confidence"],
