@@ -11,10 +11,12 @@ from backend.chats.store import init_chat_tables
 from backend.memory.layers import counts, delete_memory, list_memories, SCOPES
 from backend.llm.router import router as model_router
 from backend.core.authority import authority_policy
+from backend.brain.local_nlu import get_language_engine
+from backend.training.evaluate import checkpoint_exists
 
 app = FastAPI(
     title="Medha AI",
-    version="1.3.0",
+    version="1.4.0",
     description="Independent local personal AI system with identity, memory, tools, autonomy, and trainable local model foundations.",
 )
 
@@ -102,9 +104,11 @@ def health():
         "status": "ok",
         "service": "medha-backend",
         "memory_layers": True,
-        "runtime_model": "local-memory",
+        "runtime_model": "local-nlu",
         "ollama": False,
         "model_provider": model_router.provider_name,
-        "model_available": model_router.available(),
+        "nlu_available": get_language_engine().available,
+        "trainable_decoder_checkpoint": checkpoint_exists(),
+        "model_available": get_language_engine().available,
         "authority": authority_policy.snapshot(),
     }
