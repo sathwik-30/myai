@@ -172,7 +172,7 @@ def main() -> int:
         _wait_for_backend()
 
         frontend = _start(
-            ["npm", "run", "dev", "--", "--host", "127.0.0.1"],
+            ["npm", "exec", "vite", "--", "--host", "127.0.0.1"],
             FRONTEND,
             "frontend",
         )
