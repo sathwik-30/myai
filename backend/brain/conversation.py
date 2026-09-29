@@ -5,8 +5,9 @@ from backend.agent.autonomy import autonomy
 from backend.agent.kill_switch import require_enabled
 from backend.agent.permissions import PermissionProfile
 from backend.brain.context import ConversationContext
-from backend.brain.intent import classify, understand
+from backend.brain.intent import understand
 from backend.brain.response import generate_response
+from backend.chats.store import get_user_by_id
 from backend.core.authority import authority_for_user, CREATOR, HOST
 from backend.core.policy import apply_override
 from backend.desktop.agent import DesktopAgent, DesktopAgentError
@@ -61,7 +62,8 @@ class ConversationEngine:
         return value
 
     def _desktop_action(self, message: str, parsed: dict):
-        actor = authority_for_user({"sub": self.user_id})
+        user = get_user_by_id(self.user_id) if self.user_id is not None else None
+        actor = authority_for_user(user or {"sub": self.user_id})
         if actor not in (CREATOR, HOST):
             return "Creator/host authority required for desktop control.", "authority_denied"
 
