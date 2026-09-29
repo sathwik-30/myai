@@ -40,3 +40,24 @@ class CoreTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+    def test_agent_loop_requires_verification_when_requested(self):
+        from backend.brain.agent_loop import run_loop
+        result = run_loop(
+            "open and verify",
+            ["open", "verify"],
+            lambda step: f"done:{step}",
+            verify=lambda step, observation: step == "open",
+        )
+        self.assertFalse(result.completed)
+        self.assertEqual(result.failed_step, 1)
+
+    def test_agent_loop_retries_failed_verification_once(self):
+        from backend.brain.agent_loop import run_loop
+        attempts = {"n": 0}
+        def execute(step):
+            attempts["n"] += 1
+            return "bad" if attempts["n"] == 1 else "good"
+        result = run_loop("test", ["step"], execute, verify=lambda s, o: o == "good")
+        self.assertTrue(result.completed)
+        self.assertEqual(attempts["n"], 2)
