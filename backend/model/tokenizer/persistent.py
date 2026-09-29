@@ -1,14 +1,16 @@
 import json
 from pathlib import Path
 
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
+
 from backend.model.tokenizer.tokenizer import Tokenizer
 
 
 class PersistentTokenizer:
     """Persist Medha's vocabulary independently from model checkpoints."""
 
-    def __init__(self, path: str | Path = "models/tokenizer/vocab.json"):
-        self.path = Path(path)
+    def __init__(self, path: str | Path | None = None):
+        self.path = Path(path) if path is not None else PROJECT_ROOT / "models/tokenizer/vocab.json"
         self.tokenizer = Tokenizer()
 
     def train_texts(self, texts: list[str]) -> None:
