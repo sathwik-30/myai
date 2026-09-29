@@ -15,3 +15,5 @@ typing-extensions
 PyPDF2
 python-pptx
 python-docx
+
+torch
