@@ -21,7 +21,12 @@ def register(request: AuthRequest):
     role = "creator" if not has_admin() else "user"
     recovery_code = secrets.token_urlsafe(18)
     recovery_code_hash = hashlib.sha256(recovery_code.encode()).hexdigest()
-    user_id = create_user(username, hash_password(request.password), role=role, recovery_code_hash=recovery_code_hash)
+    user_id = create_user(
+        username,
+        hash_password(request.password),
+        role=role,
+        recovery_code_hash=recovery_code_hash,
+    )
     if not user_id:
         raise HTTPException(status_code=409, detail="Username already exists")
 
@@ -30,6 +35,7 @@ def register(request: AuthRequest):
         "username": username,
         "role": role,
         "admin": role == "creator",
+        "recovery_code": recovery_code,
     }
 
 
@@ -77,12 +83,19 @@ def reset_password(request: PasswordResetRequest):
         raise HTTPException(status_code=404, detail="Account not found")
     stored = account.get("recovery_code_hash")
     if not stored:
-        raise HTTPException(status_code=400, detail="This account does not have a recovery code. Use password change while signed in.")
+        raise HTTPException(status_code=400, detail="This account does not have a recovery code. Generate one while signed in first.")
     supplied = hashlib.sha256(request.recovery_code.strip().encode()).hexdigest()
     if not secrets.compare_digest(supplied, stored):
         raise HTTPException(status_code=401, detail="Invalid recovery code")
-    update_password(account["id"], hash_password(request.new_password), None)
-    return {"message": "Password reset successfully. You can now sign in."}
+
+    if not update_password(
+        account["id"],
+        hash_password(request.new_password),
+        clear_recovery_code=True,
+    ):
+        raise HTTPException(status_code=500, detail="Could not reset password")
+
+    return {"message": "Password reset successfully. The recovery code was used and is no longer valid."}
 
 
 @router.post("/password/recovery-code")
