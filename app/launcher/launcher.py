@@ -10,6 +10,7 @@ from __future__ import annotations
 import os
 import signal
 import logging
+import shutil
 import subprocess
 import sys
 import time
@@ -27,17 +28,18 @@ LOG_PATH = LOG_DIR / "launcher.log"
 _processes: list[subprocess.Popen] = []
 
 
-def _command_exists(command: str) -> bool:
-    try:
-        subprocess.run(
-            [command, "--version"],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            check=False,
-        )
-        return True
-    except (FileNotFoundError, OSError):
-        return False
+def _npm_command() -> str:
+    """Return an npm executable path that works with Windows subprocess."""
+    if os.name == "nt":
+        executable = shutil.which("npm.cmd")
+        if executable:
+            return executable
+    executable = shutil.which("npm")
+    if executable:
+        return executable
+    raise RuntimeError(
+        "npm was not found. Install Node.js (which includes npm) and retry."
+    )
 
 
 def _python_command() -> list[str]:
@@ -47,10 +49,7 @@ def _python_command() -> list[str]:
 def _check_prerequisites() -> None:
     if not FRONTEND.exists():
         raise RuntimeError(f"Frontend directory not found: {FRONTEND}")
-    if not _command_exists("npm"):
-        raise RuntimeError(
-            "npm was not found. Install Node.js (which includes npm) and retry."
-        )
+    _npm_command()
 
 
 def _start(command: list[str], cwd: Path, name: str) -> subprocess.Popen:
@@ -146,7 +145,11 @@ def _stop_all(*_args: object) -> None:
 
 def main() -> int:
     LOG_DIR.mkdir(parents=True, exist_ok=True)
-    logging.basicConfig(filename=LOG_PATH, level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+    logging.basicConfig(
+        filename=LOG_PATH,
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(message)s",
+    )
     logging.info("Medha launcher starting")
     print("=" * 52)
     print(" MEDHA")
@@ -154,6 +157,7 @@ def main() -> int:
     print("=" * 52)
 
     try:
+        npm = _npm_command()
         _check_prerequisites()
 
         signal.signal(signal.SIGINT, _stop_all)
@@ -178,7 +182,7 @@ def main() -> int:
         _wait_for_backend()
 
         frontend = _start(
-            ["npm", "exec", "vite", "--", "--host", "127.0.0.1"],
+            [npm, "exec", "vite", "--", "--host", "127.0.0.1"],
             FRONTEND,
             "frontend",
         )
