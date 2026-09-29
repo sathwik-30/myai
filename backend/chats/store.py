@@ -35,18 +35,40 @@ def init_chat_tables():
 def _now():
     return datetime.now(timezone.utc).isoformat()
 
-def create_user(username, password_hash, role="user"):
+def create_user(username, password_hash, role="user", recovery_code_hash=None):
     init_chat_tables()
     with _connect() as db:
         try:
+            columns = {row["name"] for row in db.execute("PRAGMA table_info(users)").fetchall()}
+            if "recovery_code_hash" not in columns:
+                db.execute("ALTER TABLE users ADD COLUMN recovery_code_hash TEXT")
             cur = db.execute(
-                "INSERT INTO users(username,password_hash,role,created_at) VALUES(?,?,?,?)",
-                (username, password_hash, role, _now()),
+                "INSERT INTO users(username,password_hash,role,recovery_code_hash,created_at) VALUES(?,?,?,?,?)",
+                (username, password_hash, role, recovery_code_hash, _now()),
             )
             db.commit()
             return cur.lastrowid
         except sqlite3.IntegrityError:
             return None
+
+def update_password(user_id, password_hash, recovery_code_hash=None):
+    init_chat_tables()
+    with _connect() as db:
+        columns = {row["name"] for row in db.execute("PRAGMA table_info(users)").fetchall()}
+        if "recovery_code_hash" not in columns:
+            db.execute("ALTER TABLE users ADD COLUMN recovery_code_hash TEXT")
+        if recovery_code_hash is None:
+            cur = db.execute(
+                "UPDATE users SET password_hash=? WHERE id=?",
+                (password_hash, int(user_id)),
+            )
+        else:
+            cur = db.execute(
+                "UPDATE users SET password_hash=?, recovery_code_hash=? WHERE id=?",
+                (password_hash, recovery_code_hash, int(user_id)),
+            )
+        db.commit()
+        return cur.rowcount > 0
 
 def get_user(username):
     init_chat_tables()
