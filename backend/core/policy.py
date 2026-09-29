@@ -15,6 +15,12 @@ def _load_lines() -> List[str]:
 
 
 def load_policy() -> Dict[str, Any]:
+    """Load explicit machine-readable rules from the human-readable override.
+
+    The Markdown document is itself a valid policy document. Explicit
+    ALWAYS:/NEVER:/REQUIRE_CONFIRMATION: lines are optional extensions used
+    when a rule needs machine-enforced matching.
+    """
     rules = _load_lines()
     always = [r[len("ALWAYS:"):].strip() for r in rules if r.startswith("ALWAYS:")]
     never = [r[len("NEVER:"):].strip() for r in rules if r.startswith("NEVER:")]
@@ -24,6 +30,7 @@ def load_policy() -> Dict[str, Any]:
         if r.startswith("REQUIRE_CONFIRMATION:")
     ]
     return {
+        "available": bool(rules),
         "always": always,
         "never": never,
         "require_confirmation": confirm,
@@ -44,14 +51,14 @@ def blocked_by_override(text: str) -> str | None:
 
 
 def apply_override(response: str, user_message: str) -> Dict[str, Any]:
-    """Apply the core policy before normal response generation.
+    """Apply explicit core policy without turning normal conversation into a gate.
 
-    The override file is authoritative policy, not a memory source. A missing
-    policy file fails closed so the assistant does not silently operate without
-    its core rules.
+    A readable OVERRIDE.md is considered available even when it contains no
+    machine-tagged rules. Only explicit NEVER rules block a request here.
+    Capability and authority checks belong to action execution boundaries.
     """
     policy = load_policy()
-    if not policy["always"] and not policy["never"] and not policy["require_confirmation"]:
+    if not policy["available"]:
         return {
             "allowed": False,
             "response": "I can't safely process this because my core override policy is unavailable.",
