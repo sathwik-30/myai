@@ -68,21 +68,41 @@ function AuthScreen({ onLogin }) {
     const [mode, setMode] = useState("login");
     const [username, setUsername] = useState("");
     const [password, setPassword] = useState("");
+    const [recoveryCode, setRecoveryCode] = useState("");
     const [error, setError] = useState("");
+    const [notice, setNotice] = useState("");
     const [loading, setLoading] = useState(false);
 
     const submit = async (event) => {
         event.preventDefault();
         setError("");
+        setNotice("");
         setLoading(true);
         try {
-            const data = await jsonRequest(`/auth/${mode}`, {
+            if (mode === "reset") {
+                await jsonRequest("/auth/password/reset", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ username, recovery_code: recoveryCode, new_password: password }),
+                });
+                setNotice("Password reset successfully. Sign in with your new password.");
+                setPassword("");
+                setRecoveryCode("");
+                setMode("login");
+                return;
+            }
+
+            const data = await jsonRequest(\`/auth/\${mode}\`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ username, password }),
             });
             localStorage.setItem("medha_token", data.token);
             localStorage.setItem("medha_username", data.username);
+
+            if (mode === "register" && data.recovery_code) {
+                setNotice(\`Account created. Save your recovery code now: \${data.recovery_code}\`);
+            }
             onLogin(data.username);
         } catch (err) {
             setError(err.message || "Authentication failed");
@@ -91,28 +111,51 @@ function AuthScreen({ onLogin }) {
         }
     };
 
+    const switchMode = (next) => {
+        setMode(next);
+        setError("");
+        setNotice("");
+        setPassword("");
+        setRecoveryCode("");
+    };
+
     return (
         <main className="auth-page">
             <section className="auth-card">
                 <div className="brand-mark large">M</div>
                 <p className="eyebrow">MEDHA</p>
-                <h1>{mode === "login" ? "Welcome back" : "Create your Medha account"}</h1>
+                <h1>{mode === "login" ? "Welcome back" : mode === "register" ? "Create your Medha account" : "Reset your password"}</h1>
                 <p className="auth-subtitle">
                     {mode === "login"
                         ? "Sign in to keep your conversations and memories separate."
-                        : "Create a private account for your conversations and memories."}
+                        : mode === "register"
+                            ? "Create a private account for your conversations and memories."
+                            : "Use your username and recovery code to set a new password."}
                 </p>
                 <form onSubmit={submit}>
                     <input value={username} onChange={(e) => setUsername(e.target.value)} placeholder="Username" autoComplete="username" minLength={3} maxLength={40} required />
-                    <input value={password} onChange={(e) => setPassword(e.target.value)} placeholder={mode === "login" ? "Password" : "Password (8+ characters)"} type="password" autoComplete={mode === "login" ? "current-password" : "new-password"} minLength={8} maxLength={128} required />
+                    {mode === "reset" && (
+                        <input value={recoveryCode} onChange={(e) => setRecoveryCode(e.target.value)} placeholder="Recovery code" autoComplete="off" minLength={12} maxLength={128} required />
+                    )}
+                    <input value={password} onChange={(e) => setPassword(e.target.value)} placeholder={mode === "login" ? "Password" : "New password (8+ characters)"} type="password" autoComplete={mode === "login" ? "current-password" : "new-password"} minLength={8} maxLength={128} required />
                     {error && <div className="auth-error">{error}</div>}
+                    {notice && <div className="auth-notice">{notice}</div>}
                     <button className="primary-button" disabled={loading}>
-                        {loading ? "Please wait…" : mode === "login" ? "Sign in" : "Create account"}
+                        {loading ? "Please wait…" : mode === "login" ? "Sign in" : mode === "register" ? "Create account" : "Reset password"}
                     </button>
                 </form>
-                <button className="link-button" onClick={() => { setMode(mode === "login" ? "register" : "login"); setError(""); }}>
-                    {mode === "login" ? "Create a new account" : "I already have an account"}
-                </button>
+                {mode === "login" && (
+                    <>
+                        <button className="link-button" onClick={() => switchMode("register")}>Create a new account</button>
+                        <button className="link-button" onClick={() => switchMode("reset")}>Forgot password</button>
+                    </>
+                )}
+                {mode === "register" && (
+                    <button className="link-button" onClick={() => switchMode("login")}>I already have an account</button>
+                )}
+                {mode === "reset" && (
+                    <button className="link-button" onClick={() => switchMode("login")}>Back to sign in</button>
+                )}
             </section>
         </main>
     );
