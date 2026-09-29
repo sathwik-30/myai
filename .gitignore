@@ -22,3 +22,6 @@ logs/
 data/nlu/
 models/checkpoints/
 models/tokenizer/
+
+backend/auth/data/.auth_secret
+models/production/
