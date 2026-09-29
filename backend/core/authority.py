@@ -1,11 +1,10 @@
 """Creator/host authority model for Medha.
 
-Identity for privileged control is bound to explicit configuration rather than
-assuming that every authenticated account is the host.
+Privileged authority is resolved from authenticated principal IDs configured
+outside model-generated text. The assistant cannot grant itself authority.
 """
 import os
 from dataclasses import dataclass, field
-from typing import Dict
 
 
 @dataclass(frozen=True)
@@ -24,7 +23,7 @@ MEDHA = Authority("medha", "assistant", 10)
 class AuthorityPolicy:
     creator: Authority = CREATOR
     host: Authority = HOST
-    permissions: Dict[str, bool] = field(default_factory=lambda: {
+    permissions: dict[str, bool] = field(default_factory=lambda: {
         "web": True,
         "files": True,
         "desktop": True,
@@ -38,17 +37,18 @@ class AuthorityPolicy:
     })
 
     def can_configure(self, actor: Authority) -> bool:
-        return actor.priority >= self.host.priority
+        return actor in (CREATOR, HOST)
 
     def allows(self, capability: str) -> bool:
         return bool(self.permissions.get(capability, False))
 
     def set_permission(self, actor: Authority, capability: str, enabled: bool) -> None:
         if not self.can_configure(actor):
-            raise PermissionError("Only creator/host authority may change Medha permissions.")
-        if not capability.strip():
+            raise PermissionError("Only configured creator/host authority may change permissions.")
+        capability = capability.strip()
+        if not capability:
             raise ValueError("Capability cannot be empty.")
-        self.permissions[capability.strip()] = bool(enabled)
+        self.permissions[capability] = bool(enabled)
 
     def snapshot(self) -> dict:
         return {
@@ -62,17 +62,14 @@ authority_policy = AuthorityPolicy()
 
 
 def configured_host_id() -> str | None:
-    value = os.getenv("MEDHA_HOST_USER_ID", "").strip()
-    return value or None
+    return os.getenv("MEDHA_HOST_USER_ID", "").strip() or None
 
 
 def configured_creator_id() -> str | None:
-    value = os.getenv("MEDHA_CREATOR_USER_ID", "").strip()
-    return value or None
+    return os.getenv("MEDHA_CREATOR_USER_ID", "").strip() or None
 
 
 def authority_for_user(user: dict) -> Authority:
-    """Resolve authority from configured principal IDs, never display names."""
     subject = str(user.get("sub", "")).strip()
     if configured_creator_id() and subject == configured_creator_id():
         return CREATOR
