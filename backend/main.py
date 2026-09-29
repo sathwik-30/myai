@@ -14,8 +14,8 @@ from backend.core.authority import authority_policy
 
 app = FastAPI(
     title="Medha AI",
-    version="1.2.0",
-    description="Independent local personal AI assistant with creator/host authority.",
+    version="1.3.0",
+    description="Independent local personal AI system with identity, memory, tools, autonomy, and trainable local model foundations.",
 )
 
 app.add_middleware(
