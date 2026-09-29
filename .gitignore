@@ -16,3 +16,9 @@ env/
 
 # Local training/runtime data
 data/training/
+
+# Local runtime logs
+logs/
+data/nlu/
+models/checkpoints/
+models/tokenizer/
