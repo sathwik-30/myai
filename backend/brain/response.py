@@ -1,11 +1,29 @@
 from backend.brain.identity import OWNER_NAME
-from backend.brain.intent import classify, understand
-from backend.brain.understanding import LanguageUnderstanding
+from backend.brain.intent import understand
 from backend.brain.language import detect_language
+from backend.brain.understanding import LanguageUnderstanding
 from backend.core.policy import apply_override
 from backend.memory.layers import search_all
 
 UNDERSTANDING = LanguageUnderstanding()
+
+# These intents are conversational/retrieval flows. They do not represent a
+# request to operate a privileged external capability.
+_CONVERSATIONAL_INTENTS = {
+    "greeting",
+    "status",
+    "identity",
+    "capability",
+    "thanks",
+    "memory",
+    "personal",
+    "technical",
+    "knowledge",
+    "research",
+    "general",
+    "casual",
+    "permanent",
+}
 
 
 def _format_knowledge_gap(result, message):
@@ -49,12 +67,20 @@ def _local_answer(intent: str, message: str, user_id=None):
 def generate_response(message, context, knowledge, search_manager, user_id=None):
     message = str(message or "").strip()
 
-    policy_check = apply_override("", message)
-    if not policy_check["allowed"]:
-        return {"answer": policy_check["response"], "source": "core_override"}
-
     if not message:
         return {"answer": f"I'm here, {OWNER_NAME}. Say something.", "source": "system"}
+
+    parsed = understand(message)
+    intent = parsed["intent"]
+
+    # Core override policy is an action boundary. Normal conversation must not
+    # be blocked merely because the policy file has no machine-readable action
+    # rule. Actual desktop/file/terminal execution must enforce authority at
+    # the tool boundary.
+    if intent not in _CONVERSATIONAL_INTENTS:
+        policy_check = apply_override("", message)
+        if not policy_check["allowed"]:
+            return {"answer": policy_check["response"], "source": "core_override"}
 
     # Memory is checked before general knowledge so user corrections/preferences
     # can influence the conversation without changing model weights.
@@ -62,15 +88,10 @@ def generate_response(message, context, knowledge, search_manager, user_id=None)
     if answer:
         return {"answer": answer, "source": "memory"}
 
-    parsed = understand(message)
-    intent = parsed["intent"]
-
     local = _local_answer(intent, message, user_id)
     if local:
         return {"answer": local[0], "source": local[1], "intent": intent, "confidence": parsed["confidence"]}
 
-    # Technical, knowledge, research, and unknown questions use Medha's local
-    # retrieval/search layer. No external LLM is called to formulate an answer.
     result = search_manager.process(message, context)
     if result and result.get("answer"):
         return {
