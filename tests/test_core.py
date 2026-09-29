@@ -62,6 +62,31 @@ class CoreTests(unittest.TestCase):
         self.assertTrue(result.completed)
         self.assertEqual(attempts["n"], 2)
 
+    def test_local_nlu_keeps_casual_messages_out_of_desktop_actions(self):
+        from backend.brain.local_nlu import LocalLanguageEngine
+        engine = LocalLanguageEngine()
+        result = engine.understand("hey medha, what's up?")
+        self.assertNotEqual(result.intent, "desktop")
+
+    def test_local_nlu_detects_natural_desktop_requests(self):
+        from backend.brain.local_nlu import LocalLanguageEngine
+        engine = LocalLanguageEngine()
+        result = engine.understand("can you open chrome for me?")
+        self.assertEqual(result.intent, "desktop")
+        self.assertEqual(result.entities.get("app"), "chrome")
+
+    def test_local_nlu_detects_close_requests(self):
+        from backend.brain.local_nlu import LocalLanguageEngine
+        engine = LocalLanguageEngine()
+        result = engine.understand("please close google chrome")
+        self.assertEqual(result.intent, "desktop")
+
+    def test_desktop_is_not_selected_for_weak_statistical_matches(self):
+        from backend.brain.local_nlu import LocalLanguageEngine
+        engine = LocalLanguageEngine()
+        result = engine.understand("tell me a story about a browser")
+        self.assertNotEqual(result.intent, "desktop")
+
 
 if __name__ == "__main__":
     unittest.main()
