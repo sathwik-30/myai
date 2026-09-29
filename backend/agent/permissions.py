@@ -1,7 +1,7 @@
 from dataclasses import dataclass, field
 from typing import Set
 
-from backend.core.authority import Authority, authority_for, authority_policy
+from backend.core.authority import Authority, authority_for_user, authority_policy
 
 
 @dataclass
@@ -46,8 +46,7 @@ class PermissionProfile:
             allow_self_learning=authority_policy.allows("self_learning"),
         )
 
-    def set_by(self, actor: str, capability: str, enabled: bool) -> None:
-        authority: Authority = authority_for(actor)
+    def set_by(self, user: dict, capability: str, enabled: bool) -> None:
+        authority = authority_for_user(user)
         authority_policy.set_permission(authority, capability, enabled)
-        updated = PermissionProfile.from_policy()
-        self.__dict__.update(updated.__dict__)
+        self.__dict__.update(PermissionProfile.from_policy().__dict__)
