@@ -78,3 +78,15 @@ def reset_password(request: PasswordResetRequest):
         raise HTTPException(status_code=401, detail="Invalid recovery code")
     update_password(account["id"], hash_password(request.new_password), None)
     return {"message": "Password reset successfully. You can now sign in."}
+
+
+@router.post("/password/recovery-code")
+def generate_recovery_code(user=Depends(current_user)):
+    account = get_user(str(user["username"]).strip().lower())
+    if not account:
+        raise HTTPException(status_code=404, detail="Account not found")
+    recovery_code = secrets.token_urlsafe(18)
+    recovery_code_hash = hashlib.sha256(recovery_code.encode()).hexdigest()
+    if not update_password(account["id"], account["password_hash"], recovery_code_hash):
+        raise HTTPException(status_code=500, detail="Could not generate recovery code")
+    return {"recovery_code": recovery_code}
