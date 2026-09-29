@@ -17,6 +17,7 @@ from backend.observability.audit_store import audit_store
 
 
 logger = logging.getLogger("medha.conversation")
+DESKTOP_CONFIDENCE_THRESHOLD = 0.70
 
 
 class ConversationEngine:
@@ -62,6 +63,14 @@ class ConversationEngine:
         return value
 
     def _desktop_action(self, message: str, parsed: dict):
+        if float(parsed.get("confidence", 0.0)) < DESKTOP_CONFIDENCE_THRESHOLD:
+            return (
+                "I think this may be a desktop request, but I'm not confident enough "
+                "to operate your computer from that wording. Please name the application "
+                "and action explicitly.",
+                "desktop_uncertain",
+            )
+
         user = get_user_by_id(self.user_id) if self.user_id is not None else None
         actor = authority_for_user(user or {"sub": self.user_id})
         if actor not in (CREATOR, HOST):
