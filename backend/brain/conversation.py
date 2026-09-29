@@ -7,6 +7,7 @@ from backend.agent.permissions import PermissionProfile
 from backend.brain.context import ConversationContext
 from backend.brain.intent import classify, understand
 from backend.brain.response import generate_response
+from backend.core.authority import authority_for_user, CREATOR, HOST
 from backend.core.policy import apply_override
 from backend.desktop.agent import DesktopAgent, DesktopAgentError
 from backend.memory.evaluator import evaluate_memory
@@ -60,6 +61,10 @@ class ConversationEngine:
         return value
 
     def _desktop_action(self, message: str, parsed: dict):
+        actor = authority_for_user({"sub": self.user_id})
+        if actor not in (CREATOR, HOST):
+            return "Creator/host authority required for desktop control.", "authority_denied"
+
         if not PermissionProfile.from_policy().can("desktop"):
             return "Desktop control is disabled by the current Medha authority policy.", "permission_denied"
 
@@ -127,8 +132,6 @@ class ConversationEngine:
                     response = str(result)
                     source = "memory"
 
-                # If the previous turn explicitly asked the user for a missing
-                # fact, the next user response can become a personal memory.
                 learned_from_followup = False
                 if history and history[-1].get("role") == "assistant":
                     previous_answer = history[-1].get("message", "")
