@@ -7,6 +7,17 @@ const API_CANDIDATES = [
     "http://127.0.0.1:8000/api",
 ].filter((value, index, list) => list.indexOf(value) === index);
 
+function getErrorMessage(data, fallback) {
+    if (typeof data?.detail === "string") return data.detail;
+    if (Array.isArray(data?.detail)) {
+        return data.detail.map((item) => item?.msg || String(item)).join("; ");
+    }
+    if (data?.detail && typeof data.detail === "object") {
+        return data.detail.message || data.detail.msg || JSON.stringify(data.detail);
+    }
+    return fallback;
+}
+
 async function apiRequest(path, options = {}) {
     let lastError = null;
     const timeoutMs = options.timeoutMs ?? 8000;
@@ -46,7 +57,7 @@ async function jsonRequest(path, options = {}) {
     let data = {};
     try { data = await response.json(); } catch {}
     if (!response.ok) {
-        const error = new Error(data.detail || `HTTP ${response.status}`);
+        const error = new Error(getErrorMessage(data, `HTTP ${response.status}`));
         error.status = response.status;
         throw error;
     }
@@ -74,7 +85,7 @@ function AuthScreen({ onLogin }) {
             localStorage.setItem("medha_username", data.username);
             onLogin(data.username);
         } catch (err) {
-            setError(err.message);
+            setError(err.message || "Authentication failed");
         } finally {
             setLoading(false);
         }
@@ -85,11 +96,15 @@ function AuthScreen({ onLogin }) {
             <section className="auth-card">
                 <div className="brand-mark large">M</div>
                 <p className="eyebrow">MEDHA</p>
-                <h1>Your personal AI assistant</h1>
-                <p className="auth-subtitle">Sign in to keep your conversations and memories separate.</p>
+                <h1>{mode === "login" ? "Welcome back" : "Create your Medha account"}</h1>
+                <p className="auth-subtitle">
+                    {mode === "login"
+                        ? "Sign in to keep your conversations and memories separate."
+                        : "Create a private account for your conversations and memories."}
+                </p>
                 <form onSubmit={submit}>
-                    <input value={username} onChange={(e) => setUsername(e.target.value)} placeholder="Username" autoComplete="username" />
-                    <input value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Password" type="password" autoComplete={mode === "login" ? "current-password" : "new-password"} />
+                    <input value={username} onChange={(e) => setUsername(e.target.value)} placeholder="Username" autoComplete="username" minLength={3} maxLength={40} required />
+                    <input value={password} onChange={(e) => setPassword(e.target.value)} placeholder={mode === "login" ? "Password" : "Password (8+ characters)"} type="password" autoComplete={mode === "login" ? "current-password" : "new-password"} minLength={8} maxLength={128} required />
                     {error && <div className="auth-error">{error}</div>}
                     <button className="primary-button" disabled={loading}>
                         {loading ? "Please wait…" : mode === "login" ? "Sign in" : "Create account"}
@@ -142,8 +157,6 @@ function App() {
             });
             if (!data.chat_id) throw new Error("The backend did not return a chat ID.");
 
-            // Create locally first. One POST is enough. The next list refresh
-            // happens only when the user returns to the sidebar flow.
             const chat = {
                 id: data.chat_id,
                 title: "New chat",
@@ -202,12 +215,7 @@ function App() {
             setActiveChat((current) => current ? { ...current, updated_at: new Date().toISOString() } : current);
         } catch (err) {
             if (err.name === "AbortError") return;
-            // Do not create a fake assistant message for a failed request.
-            // The backend persists the user turn, and the next reload will show
-            // exactly what is actually stored.
-            if (activeChatIdRef.current === sentChatId) {
-                setError(err.message);
-            }
+            if (activeChatIdRef.current === sentChatId) setError(err.message);
         } finally {
             if (requestControllerRef.current === controller) {
                 requestControllerRef.current = null;
@@ -228,16 +236,8 @@ function App() {
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ title: nextTitle }),
             });
-
-            // Title-only update. Never reload or replace the conversation messages.
-            setChats((current) =>
-                current.map((item) =>
-                    item.id === activeChat.id ? { ...item, title: nextTitle } : item
-                )
-            );
-            setActiveChat((current) =>
-                current ? { ...current, title: nextTitle } : current
-            );
+            setChats((current) => current.map((item) => item.id === activeChat.id ? { ...item, title: nextTitle } : item));
+            setActiveChat((current) => current ? { ...current, title: nextTitle } : current);
         } catch (err) {
             setError(`Could not rename chat: ${err.message}`);
         }
@@ -246,29 +246,15 @@ function App() {
     const renameChat = async (chat) => {
         const title = window.prompt("Rename chat", chat.title);
         if (!title?.trim() || title.trim() === chat.title) return;
-
         try {
             const nextTitle = title.trim();
-
             await jsonRequest(`/chats/${chat.id}`, {
                 method: "PATCH",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ title: nextTitle }),
             });
-
-            // Rename is title-only. Do not reload the conversation or replace
-            // the current message state. The stored messages remain untouched.
-            setChats((current) =>
-                current.map((item) =>
-                    item.id === chat.id ? { ...item, title: nextTitle } : item
-                )
-            );
-
-            if (activeChat?.id === chat.id) {
-                setActiveChat((current) =>
-                    current ? { ...current, title: nextTitle } : current
-                );
-            }
+            setChats((current) => current.map((item) => item.id === chat.id ? { ...item, title: nextTitle } : item));
+            if (activeChat?.id === chat.id) setActiveChat((current) => current ? { ...current, title: nextTitle } : current);
         } catch (err) {
             setError(`Could not rename chat: ${err.message}`);
         }
@@ -295,16 +281,8 @@ function App() {
 
     useEffect(() => {
         if (!username) return;
-
         loadChats()
-            .then((nextChats) => {
-                if (nextChats.length) {
-                    return openChat(nextChats[0].id);
-                }
-                setActiveChat(null);
-                setMessages([]);
-                return null;
-            })
+            .then((nextChats) => nextChats.length ? openChat(nextChats[0].id) : null)
             .catch((err) => {
                 if (err.status === 401) logout();
                 else setError(err.message);
@@ -327,20 +305,8 @@ function App() {
                 <div className="chat-list">
                     {chats.map((chat) => (
                         <div key={chat.id} className={`chat-item-wrap ${activeChat?.id === chat.id ? "active" : ""}`}>
-                            <button className="chat-item" onClick={() => openChat(chat.id)}>
-                                <span>{chat.title}</span>
-                            </button>
-                            <button
-                                className="chat-rename"
-                                onClick={(event) => {
-                                    event.stopPropagation();
-                                    renameChat(chat);
-                                }}
-                                title="Rename chat"
-                                aria-label={`Rename ${chat.title}`}
-                            >
-                                ✎
-                            </button>
+                            <button className="chat-item" onClick={() => openChat(chat.id)}><span>{chat.title}</span></button>
+                            <button className="chat-rename" onClick={(event) => { event.stopPropagation(); renameChat(chat); }} title="Rename chat" aria-label={`Rename ${chat.title}`}>✎</button>
                         </div>
                     ))}
                     {!chats.length && <p className="empty-side">No conversations yet.</p>}
@@ -375,26 +341,10 @@ function App() {
                                 </div>
                             </div>
                             <div className="quick-grid">
-                                <button className="quick-card" onClick={() => { newChat("Help me learn a topic step by step"); }}>
-                                    <span className="quick-icon">✦</span>
-                                    <strong>Learn something</strong>
-                                    <small>Explain a topic clearly</small>
-                                </button>
-                                <button className="quick-card" onClick={() => { newChat("Help me debug my code"); }}>
-                                    <span className="quick-icon">⌘</span>
-                                    <strong>Work on code</strong>
-                                    <small>Debug, design, or improve</small>
-                                </button>
-                                <button className="quick-card" onClick={() => { newChat("Help me research this topic"); }}>
-                                    <span className="quick-icon">⌕</span>
-                                    <strong>Research</strong>
-                                    <small>Use knowledge and the web</small>
-                                </button>
-                                <button className="quick-card" onClick={() => { newChat("Help me plan my next task"); }}>
-                                    <span className="quick-icon">✓</span>
-                                    <strong>Plan work</strong>
-                                    <small>Break a goal into steps</small>
-                                </button>
+                                <button className="quick-card" onClick={() => newChat("Help me learn a topic step by step")}><span className="quick-icon">✦</span><strong>Learn something</strong><small>Explain a topic clearly</small></button>
+                                <button className="quick-card" onClick={() => newChat("Help me debug my code")}><span className="quick-icon">⌘</span><strong>Work on code</strong><small>Debug, design, or improve</small></button>
+                                <button className="quick-card" onClick={() => newChat("Help me research this topic")}><span className="quick-icon">⌕</span><strong>Research</strong><small>Use knowledge and the web</small></button>
+                                <button className="quick-card" onClick={() => newChat("Help me plan my next task")}><span className="quick-icon">✓</span><strong>Plan work</strong><small>Break a goal into steps</small></button>
                             </div>
                             <button className="primary-button welcome-button" onClick={newChat}>＋ Start new chat</button>
                         </section>
@@ -417,15 +367,7 @@ function App() {
                 <div className="composer-wrap">
                     <div className="input-area">
                         <textarea ref={textareaRef} value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); } }} placeholder={activeChat ? "Message Medha..." : "Create a chat first..."} rows="1" disabled={!activeChat}/>
-                        {loading ? (
-                            <button className="stop-button" onClick={stopResponse} aria-label="Stop response" title="Stop response">
-                                ■
-                            </button>
-                        ) : (
-                            <button className="send-button" onClick={sendMessage} disabled={!input.trim() || !activeChat} aria-label="Send message" title="Send message">
-                                ↑
-                            </button>
-                        )}
+                        {loading ? <button className="stop-button" onClick={stopResponse} aria-label="Stop response" title="Stop response">■</button> : <button className="send-button" onClick={sendMessage} disabled={!input.trim() || !activeChat} aria-label="Send message" title="Send message">↑</button>}
                     </div>
                     <p className="composer-hint">Enter to send · Shift + Enter for a new line</p>
                 </div>
