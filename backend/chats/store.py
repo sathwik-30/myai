@@ -18,10 +18,11 @@ def init_chat_tables():
             id INTEGER PRIMARY KEY, username TEXT UNIQUE NOT NULL,
             password_hash TEXT NOT NULL, role TEXT NOT NULL DEFAULT 'user',
             created_at TEXT NOT NULL)""")
-        # Migrate databases created before the role column existed.
         columns = {row["name"] for row in db.execute("PRAGMA table_info(users)").fetchall()}
         if "role" not in columns:
             db.execute("ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'user'")
+        if "recovery_code_hash" not in columns:
+            db.execute("ALTER TABLE users ADD COLUMN recovery_code_hash TEXT")
         db.execute("""CREATE TABLE IF NOT EXISTS chats (
             id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL, title TEXT NOT NULL,
             created_at TEXT NOT NULL, updated_at TEXT NOT NULL)""")
@@ -39,9 +40,6 @@ def create_user(username, password_hash, role="user", recovery_code_hash=None):
     init_chat_tables()
     with _connect() as db:
         try:
-            columns = {row["name"] for row in db.execute("PRAGMA table_info(users)").fetchall()}
-            if "recovery_code_hash" not in columns:
-                db.execute("ALTER TABLE users ADD COLUMN recovery_code_hash TEXT")
             cur = db.execute(
                 "INSERT INTO users(username,password_hash,role,recovery_code_hash,created_at) VALUES(?,?,?,?,?)",
                 (username, password_hash, role, recovery_code_hash, _now()),
@@ -51,13 +49,15 @@ def create_user(username, password_hash, role="user", recovery_code_hash=None):
         except sqlite3.IntegrityError:
             return None
 
-def update_password(user_id, password_hash, recovery_code_hash=None):
+def update_password(user_id, password_hash, recovery_code_hash=None, clear_recovery_code=False):
     init_chat_tables()
     with _connect() as db:
-        columns = {row["name"] for row in db.execute("PRAGMA table_info(users)").fetchall()}
-        if "recovery_code_hash" not in columns:
-            db.execute("ALTER TABLE users ADD COLUMN recovery_code_hash TEXT")
-        if recovery_code_hash is None:
+        if clear_recovery_code:
+            cur = db.execute(
+                "UPDATE users SET password_hash=?, recovery_code_hash=NULL WHERE id=?",
+                (password_hash, int(user_id)),
+            )
+        elif recovery_code_hash is None:
             cur = db.execute(
                 "UPDATE users SET password_hash=? WHERE id=?",
                 (password_hash, int(user_id)),
