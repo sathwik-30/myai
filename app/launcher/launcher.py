@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import os
 import signal
+import logging
 import subprocess
 import sys
 import time
@@ -20,6 +21,8 @@ ROOT = Path(__file__).resolve().parents[2]
 FRONTEND = ROOT / "frontend"
 BACKEND_URL = "http://127.0.0.1:8000/api/health"
 FRONTEND_URL = "http://127.0.0.1:5173"
+LOG_DIR = ROOT / "logs"
+LOG_PATH = LOG_DIR / "launcher.log"
 
 _processes: list[subprocess.Popen] = []
 
@@ -142,6 +145,9 @@ def _stop_all(*_args: object) -> None:
 
 
 def main() -> int:
+    LOG_DIR.mkdir(parents=True, exist_ok=True)
+    logging.basicConfig(filename=LOG_PATH, level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+    logging.info("Medha launcher starting")
     print("=" * 52)
     print(" MEDHA")
     print(" Independent local personal AI runtime")
@@ -195,10 +201,13 @@ def main() -> int:
     except KeyboardInterrupt:
         return 0
     except Exception as exc:
+        logging.exception("Medha startup failed")
         print(f"\n[Medha] Startup failed: {exc}")
+        print(f"[Medha] See log: {LOG_PATH}")
         return 1
     finally:
         _stop_all()
+        logging.info("Medha launcher stopped")
 
 
 if __name__ == "__main__":
