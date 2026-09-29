@@ -7,6 +7,7 @@ from starlette.background import BackgroundTask
 from pydantic import BaseModel, Field
 
 from backend.auth.dependencies import current_user
+from backend.agent.permissions import PermissionProfile
 from backend.desktop.agent import DesktopAgent, DesktopAgentError
 
 router = APIRouter(prefix="/desktop", tags=["desktop"])
@@ -18,6 +19,11 @@ def _remove_temp_file(path: str) -> None:
         os.remove(path)
     except OSError:
         pass
+
+
+def _require_desktop(user):
+    if not PermissionProfile.from_policy().can("desktop"):
+        raise HTTPException(status_code=403, detail="Desktop capability is disabled by Medha authority policy.")
 
 
 def _run(action):
@@ -58,41 +64,49 @@ class ScrollRequest(BaseModel):
 
 @router.get("/status")
 def desktop_status(user=Depends(current_user)):
+    _require_desktop(user)
     return _run(agent.status)
 
 
 @router.get("/windows")
 def desktop_windows(user=Depends(current_user)):
+    _require_desktop(user)
     return {"windows": _run(agent.windows)}
 
 
 @router.post("/open")
 def desktop_open(request: OpenAppRequest, user=Depends(current_user)):
+    _require_desktop(user)
     return _run(lambda: agent.open_app(request.app))
 
 
 @router.post("/focus")
 def desktop_focus(request: FocusWindowRequest, user=Depends(current_user)):
+    _require_desktop(user)
     return _run(lambda: agent.focus_window(request.title))
 
 
 @router.post("/click")
 def desktop_click(request: ClickRequest, user=Depends(current_user)):
+    _require_desktop(user)
     return _run(lambda: agent.click(request.x, request.y, request.button))
 
 
 @router.post("/type")
 def desktop_type(request: TypeRequest, user=Depends(current_user)):
+    _require_desktop(user)
     return _run(lambda: agent.type_text(request.text, request.interval))
 
 
 @router.post("/hotkey")
 def desktop_hotkey(request: HotkeyRequest, user=Depends(current_user)):
+    _require_desktop(user)
     return _run(lambda: agent.hotkey(request.keys))
 
 
 @router.post("/scroll")
 def desktop_scroll(request: ScrollRequest, user=Depends(current_user)):
+    _require_desktop(user)
     return _run(lambda: agent.scroll(request.clicks))
 
 
