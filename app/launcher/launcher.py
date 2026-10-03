@@ -1,15 +1,15 @@
-"""One-click Medha development/runtime launcher for Windows.
+"""One-click Medha Windows launcher.
 
-Starts the existing FastAPI backend and React/Vite frontend, waits for
-backend health, opens Medha in the default browser, and cleans up child
-processes on exit.
+Creates a project-local virtual environment on first run, installs the
+backend/frontend dependencies when needed, starts FastAPI and Vite, waits for
+both services, opens the browser, and cleans up child processes on exit.
 """
 
 from __future__ import annotations
 
+import logging
 import os
 import signal
-import logging
 import shutil
 import subprocess
 import sys
@@ -20,6 +20,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 FRONTEND = ROOT / "frontend"
+VENV = ROOT / ".venv"
 BACKEND_URL = "http://127.0.0.1:8000/api/health"
 FRONTEND_URL = "http://127.0.0.1:5173"
 LOG_DIR = ROOT / "logs"
@@ -28,8 +29,19 @@ LOG_PATH = LOG_DIR / "launcher.log"
 _processes: list[subprocess.Popen] = []
 
 
+def _system_python() -> str:
+    for command in ("py", "python"):
+        executable = shutil.which(command)
+        if executable:
+            return executable
+    raise RuntimeError("Python 3.11+ was not found. Install Python and run Medha again.")
+
+
+def _venv_python() -> Path:
+    return VENV / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
+
+
 def _npm_command() -> str:
-    """Return an npm executable path that works with Windows subprocess."""
     if os.name == "nt":
         executable = shutil.which("npm.cmd")
         if executable:
@@ -37,19 +49,50 @@ def _npm_command() -> str:
     executable = shutil.which("npm")
     if executable:
         return executable
-    raise RuntimeError(
-        "npm was not found. Install Node.js (which includes npm) and retry."
-    )
+    raise RuntimeError("Node.js/npm was not found. Install Node.js and run Medha again.")
 
 
-def _python_command() -> list[str]:
-    return [sys.executable]
+def _run(command: list[str], cwd: Path, label: str) -> None:
+    print(f"[Medha] {label}...")
+    result = subprocess.run(command, cwd=str(cwd), check=False)
+    if result.returncode != 0:
+        raise RuntimeError(f"{label} failed with exit code {result.returncode}.")
 
 
-def _check_prerequisites() -> None:
+def _ensure_environment() -> tuple[Path, str]:
     if not FRONTEND.exists():
         raise RuntimeError(f"Frontend directory not found: {FRONTEND}")
-    _npm_command()
+
+    system_python = _system_python()
+    python = _venv_python()
+
+    if not python.exists():
+        _run([system_python, "-m", "venv", str(VENV)], ROOT, "Creating Python virtual environment")
+        python = _venv_python()
+
+    if not python.exists():
+        raise RuntimeError(f"Python virtual environment was not created: {python}")
+
+    _run(
+        [str(python), "-m", "pip", "install", "-r", str(ROOT / "backend" / "requirements.txt")],
+        ROOT,
+        "Installing backend dependencies",
+    )
+
+    desktop_requirements = ROOT / "backend" / "requirements-desktop.txt"
+    if desktop_requirements.exists():
+        _run(
+            [str(python), "-m", "pip", "install", "-r", str(desktop_requirements)],
+            ROOT,
+            "Installing desktop-control dependencies",
+        )
+
+    npm = _npm_command()
+    node_modules = FRONTEND / "node_modules"
+    if not node_modules.exists():
+        _run([npm, "install"], FRONTEND, "Installing frontend dependencies")
+
+    return python, npm
 
 
 def _start(command: list[str], cwd: Path, name: str) -> subprocess.Popen:
@@ -70,46 +113,30 @@ def _start(command: list[str], cwd: Path, name: str) -> subprocess.Popen:
     return process
 
 
-def _wait_for_backend(timeout: float = 45.0) -> None:
+def _wait_for_url(url: str, timeout: float, name: str) -> None:
     deadline = time.monotonic() + timeout
     last_error = "not checked"
 
     while time.monotonic() < deadline:
         if any(p.poll() is not None for p in _processes):
             exited = [p.pid for p in _processes if p.poll() is not None]
-            raise RuntimeError(f"A Medha process exited during startup: {exited}")
+            raise RuntimeError(f"A Medha process exited during {name} startup: {exited}")
 
         try:
-            with urllib.request.urlopen(BACKEND_URL, timeout=2) as response:
-                if response.status == 200:
-                    print("[Medha] Backend health check passed.")
+            with urllib.request.urlopen(url, timeout=2) as response:
+                if response.status < 500:
+                    print(f"[Medha] {name} is ready.")
                     return
         except (urllib.error.URLError, TimeoutError, OSError) as exc:
             last_error = str(exc)
 
         time.sleep(1)
 
-    raise RuntimeError(f"Backend did not become healthy within {timeout:.0f}s: {last_error}")
-
-
-def _wait_for_frontend(timeout: float = 30.0) -> None:
-    deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
-        try:
-            with urllib.request.urlopen(FRONTEND_URL, timeout=2) as response:
-                if response.status < 500:
-                    print("[Medha] Frontend is ready.")
-                    return
-        except (urllib.error.URLError, TimeoutError, OSError):
-            pass
-        time.sleep(1)
-
-    raise RuntimeError(f"Frontend did not become ready within {timeout:.0f}s")
+    raise RuntimeError(f"{name} did not become ready within {timeout:.0f}s: {last_error}")
 
 
 def _open_browser() -> None:
     import webbrowser
-
     webbrowser.open(FRONTEND_URL)
     print(f"[Medha] Opened {FRONTEND_URL}")
 
@@ -150,23 +177,22 @@ def main() -> int:
         level=logging.INFO,
         format="%(asctime)s %(levelname)s %(message)s",
     )
-    logging.info("Medha launcher starting")
+
     print("=" * 52)
     print(" MEDHA")
     print(" Independent local personal AI runtime")
     print("=" * 52)
 
     try:
-        npm = _npm_command()
-        _check_prerequisites()
+        python, npm = _ensure_environment()
 
         signal.signal(signal.SIGINT, _stop_all)
         if hasattr(signal, "SIGTERM"):
             signal.signal(signal.SIGTERM, _stop_all)
 
         backend = _start(
-            _python_command()
-            + [
+            [
+                str(python),
                 "-m",
                 "uvicorn",
                 "backend.main:app",
@@ -179,7 +205,7 @@ def main() -> int:
             "backend",
         )
 
-        _wait_for_backend()
+        _wait_for_url(BACKEND_URL, 60, "Backend")
 
         frontend = _start(
             [npm, "exec", "vite", "--", "--host", "127.0.0.1"],
@@ -187,7 +213,7 @@ def main() -> int:
             "frontend",
         )
 
-        _wait_for_frontend()
+        _wait_for_url(FRONTEND_URL, 45, "Frontend")
         _open_browser()
 
         print("\n[Medha] Running.")
