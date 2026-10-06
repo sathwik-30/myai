@@ -7,10 +7,13 @@ a Hugging Face model id.
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
 import torch
 
-DEFAULT_MODEL = os.getenv("MEDHA_BASE_MODEL", "Qwen/Qwen2.5-0.5B-Instruct")
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+LOCAL_TRAINED_MODEL = PROJECT_ROOT / "models" / "conversational-medha"
+DEFAULT_MODEL = os.getenv("MEDHA_BASE_MODEL", str(LOCAL_TRAINED_MODEL) if LOCAL_TRAINED_MODEL.exists() else "Qwen/Qwen2.5-0.5B-Instruct")
 
 
 class TransformerRuntime:
