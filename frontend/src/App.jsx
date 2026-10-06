@@ -411,7 +411,7 @@ function App() {
                     <button className="mobile-menu" onClick={() => setSidebarOpen(!sidebarOpen)}>☰</button>
                     <div>
                         <h1>{activeChat?.title || "New chat"}</h1>
-                        <p>Independent local AI · memory enabled · no runtime LLM</p>
+                        <p>Local-first AI · persistent memory · optional local Ollama</p>
                     </div>
                     {error && <span className="header-error">{error}</span>}
                 </header>
