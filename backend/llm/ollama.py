@@ -1,11 +1,3 @@
-"""Optional local Ollama provider for Medha.
-
-Ollama runs on the user's machine. It is therefore a local model backend, not
-a cloud dependency. Medha's routing and authority logic remain independent of
-the model provider.
-"""
-from __future__ import annotations
-
 import os
 from typing import Any, Dict, List
 
@@ -52,9 +44,7 @@ class OllamaProvider(LLMProvider):
                 "model": model or self.model,
                 "messages": payload_messages,
                 "stream": False,
-                "options": {
-                    "temperature": max(0.0, min(float(temperature), 1.5)),
-                },
+                "options": {"temperature": max(0.0, min(float(temperature), 1.5))},
             },
             timeout=self.timeout,
         )
@@ -64,11 +54,7 @@ class OllamaProvider(LLMProvider):
         content = str(message.get("content", "")).strip()
         if not content:
             raise RuntimeError("Ollama returned an empty response.")
-        return {
-            "text": content,
-            "model": model or self.model,
-            "provider": self.name,
-        }
+        return {"text": content, "model": model or self.model, "provider": self.name}
 
 
 provider = OllamaProvider()
