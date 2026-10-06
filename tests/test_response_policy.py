@@ -41,7 +41,7 @@ def test_actions_remain_blocked_when_override_is_unavailable(tmp_path):
 
 
 def test_auth_rate_limiter_blocks_excessive_attempts():
-    from backend.api.auth import _attempts, _RATE_LIMIT, _RATE_WINDOW_SECONDS, _rate_limit
+    from backend.api.auth import _attempts, _RATE_LIMIT, _rate_limit
     from unittest.mock import Mock
     request = Mock()
     request.client.host = "test-rate-limit"
@@ -55,3 +55,27 @@ def test_auth_rate_limiter_blocks_excessive_attempts():
         assert getattr(exc, "status_code", None) == 429
     finally:
         _attempts.pop(key, None)
+
+
+def test_recovery_errors_do_not_reveal_account_existence():
+    from backend.api import auth
+    from unittest.mock import patch
+    from fastapi import HTTPException
+    request = Mock()
+    request.client.host = "recovery-test"
+    with patch.object(auth, "_rate_limit"):
+        with patch.object(auth, "get_user", return_value=None):
+            try:
+                auth.reset_password(
+                    auth.PasswordResetRequest(
+                        username="missing-user",
+                        recovery_code="this-is-a-valid-length-code",
+                        new_password="new-password-123",
+                    ),
+                    request,
+                )
+            except HTTPException as exc:
+                assert exc.status_code == 401
+                assert exc.detail == "Invalid username or recovery code"
+            else:
+                raise AssertionError("reset_password should reject unknown users")
