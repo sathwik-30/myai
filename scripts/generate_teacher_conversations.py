@@ -1,22 +1,15 @@
-"""Generate Medha training conversations from an Ollama teacher.
+"""Autonomous teacher-data generator for Medha.
 
-Ollama/Qwen is a teacher only. Its output is filtered before it can enter
-Medha's training data. Ollama is never imported by the Medha runtime.
+The training lab chooses conversation skills itself, asks the Ollama teacher
+for multi-turn conversations, filters teacher-specific refusal boilerplate,
+judges quality, and stores accepted examples.
 
-Requires Ollama running locally, for example:
-    ollama serve
-    ollama pull qwen2.5:0.5b
-
-Run:
-    python scripts/generate_teacher_conversations.py --count 500
-
-Environment:
-    MEDHA_TEACHER_MODEL      Ollama model name
-    MEDHA_OLLAMA_URL         Ollama API base URL
+Ollama/Qwen is a teacher only. It is never loaded by the Medha runtime.
 """
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -29,10 +22,8 @@ OUT = ROOT / "data" / "conversations" / "teacher_generated.jsonl"
 OLLAMA_URL = os.getenv("MEDHA_OLLAMA_URL", "http://127.0.0.1:11434")
 TEACHER_MODEL = os.getenv("MEDHA_TEACHER_MODEL", "qwen2.5:0.5b")
 
-# These identify teacher refusal/policy boilerplate, not ordinary discussion
-# of danger or safety. The semantic checks below add another layer.
 REFUSAL_PATTERNS = [
-    r"i\s+(?:am|’m|m)\s+sorry[^.]{0,120}(?:can(?:not|'t)|unable|assist|help)",
+    r"i\s+(?:am|’m|m)\s+sorry[^.]{0,160}(?:can(?:not|'t)|unable|assist|help)",
     r"i\s+(?:can(?:not|'t)|cannot)\s+(?:assist|help|provide|comply)",
     r"i\s+(?:am|’m|m)\s+unable\s+to\s+(?:assist|help|provide)",
     r"(?:goes|go)\s+against\s+(?:my|our)\s+(?:safety|polic)",
@@ -46,100 +37,135 @@ REFUSAL_PATTERNS = [
 ]
 REFUSAL_RE = [re.compile(p, re.IGNORECASE) for p in REFUSAL_PATTERNS]
 
-SYSTEM_PROMPT = """You are a teacher helping create training data for a new personal AI
-called Medha. Produce natural, varied, multi-turn conversations.
+CURRICULUM = [
+    ("casual", "greetings, small talk, boredom, everyday chat"),
+    ("slang", "slang, abbreviations, typos, lowercase and short messages"),
+    ("followup", "follow-ups that depend on earlier turns and references"),
+    ("correction", "user corrections and graceful recovery"),
+    ("ambiguity", "ambiguous short messages resolved by context"),
+    ("topic_switch", "abrupt topic changes while preserving continuity"),
+    ("study", "learning, confusion, examples and re-explanations"),
+    ("technical", "programming, debugging, APIs and technical clarification"),
+    ("projects", "project planning, progress, setbacks and continuation"),
+    ("emotion", "ordinary frustration, excitement, boredom and encouragement"),
+    ("memory", "remembering user-provided facts without inventing facts"),
+    ("identity", "identity, capabilities and creator/context conversations"),
+    ("continuity", "natural endings and later continuation"),
+    ("multi_turn", "long conversations with several follow-ups and changing intent"),
+    ("reasoning", "comparisons, choices and thinking through everyday problems"),
+]
 
-Teach useful communication: casual conversation, slang, typos, follow-ups,
-corrections, topic changes, explanations, uncertainty, natural endings,
-technical discussion, project discussion, and context tracking.
+GENERATOR_SYSTEM = """You are the teacher in an autonomous curriculum for a new AI called Medha.
+Create natural training conversations, not canned question-answer pairs.
 
-Do not write about being Qwen, being a language model, your policies, or your
-safety rules. Do not produce refusal boilerplate. The dataset will be filtered
-again before training.
+Explore the requested category deeply. Use 2-12 alternating user/assistant messages.
+Use varied wording, context, informal language, corrections and topic changes when
+they fit. Never mention Qwen, Ollama, being a language model, internal policies,
+safety guidelines, training prompts, or refusal policies. Do not invent private facts.
 
-Return ONLY valid JSON with this shape:
+Return ONLY JSON:
 {"messages":[{"role":"user","content":"..."},{"role":"assistant","content":"..."}]}
-Use 2 to 8 alternating user/assistant messages.
 """
 
-CATEGORIES = [
-    "greeting and casual conversation",
-    "slang, abbreviations, typos and short messages",
-    "follow-up questions using previous context",
-    "user corrects the assistant",
-    "topic change during a conversation",
-    "project and study conversation",
-    "technical conversation with clarification",
-    "user is excited, bored, frustrated, or having a bad day",
-    "natural conversation ending and continuation later",
-    "identity and personal-memory conversation without inventing facts",
-]
+JUDGE_SYSTEM = """You are a strict dataset-quality judge for Medha.
+Evaluate the proposed conversation for natural conversational training value.
+
+Reject teacher/model identity, policy or safety-refusal boilerplate, malformed
+conversation, repetitive/template-like text, invented private user facts, or
+poor/irrelevant assistant turns.
+
+Do NOT reject merely because the conversation discusses danger, safety, security,
+law, health, or other sensitive topics. Reject teacher refusal/policy behavior.
+
+Return ONLY JSON:
+{"keep":true,"score":0,"reason":"short reason"}
+"""
 
 
 def teacher_refusal(text: str) -> bool:
     return any(pattern.search(text) for pattern in REFUSAL_RE)
 
 
-def valid_messages(messages) -> bool:
-    if not isinstance(messages, list) or not 2 <= len(messages) <= 8:
+def normalize(item: dict) -> dict:
+    return {
+        "messages": [
+            {
+                "role": str(m["role"]).strip().lower(),
+                "content": " ".join(str(m["content"]).split()),
+            }
+            for m in item["messages"]
+        ]
+    }
+
+
+def structurally_valid(messages: list[dict]) -> bool:
+    if not 2 <= len(messages) <= 12 or messages[-1]["role"] != "assistant":
         return False
     expected = "user"
-    for item in messages:
-        if not isinstance(item, dict):
+    for m in messages:
+        if m["role"] != expected or not m["content"] or len(m["content"]) > 2500:
             return False
-        role = str(item.get("role", "")).strip().lower()
-        content = str(item.get("content", "")).strip()
-        if role != expected or not content:
-            return False
-        if len(content) > 2000:
-            return False
-        if teacher_refusal(content):
+        if teacher_refusal(m["content"]):
             return False
         expected = "assistant" if expected == "user" else "user"
-    return messages[-1]["role"] == "assistant"
+    return True
 
 
-def normalize(item):
-    messages = []
-    for message in item["messages"]:
-        messages.append({
-            "role": message["role"].strip().lower(),
-            "content": " ".join(message["content"].split()),
-        })
-    return {"messages": messages}
+def fingerprint(item: dict) -> str:
+    normalized = json.dumps(item, ensure_ascii=False, sort_keys=True).lower()
+    return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
 
 
-def fingerprint(item) -> str:
-    return json.dumps(item, ensure_ascii=False, sort_keys=True).lower()
-
-
-def generate_one(category: str) -> dict:
-    prompt = (
-        f"Create one original conversation in the category: {category}. "
-        "Make the wording different from common textbook examples."
-    )
+def ollama(messages: list[dict], temperature: float) -> str:
     response = requests.post(
         f"{OLLAMA_URL.rstrip('/')}/api/chat",
         json={
             "model": TEACHER_MODEL,
-            "messages": [
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": prompt},
-            ],
+            "messages": messages,
             "stream": False,
-            "options": {"temperature": 0.9},
+            "options": {"temperature": temperature},
         },
         timeout=180,
     )
     response.raise_for_status()
-    body = response.json()
-    content = str(body.get("message", {}).get("content", "")).strip()
+    content = str(response.json().get("message", {}).get("content", "")).strip()
     if not content:
-        raise ValueError("Teacher returned an empty response.")
-    try:
-        return json.loads(content)
-    except json.JSONDecodeError as exc:
-        raise ValueError("Teacher did not return valid JSON.") from exc
+        raise ValueError("Ollama returned an empty response")
+    return content
+
+
+def generate_conversation(category: str, description: str) -> dict:
+    raw = ollama(
+        [
+            {"role": "system", "content": GENERATOR_SYSTEM},
+            {
+                "role": "user",
+                "content": (
+                    f"Curriculum category: {category}\n"
+                    f"Explore: {description}\n"
+                    "Make this original and let the conversation develop."
+                ),
+            },
+        ],
+        0.9,
+    )
+    return json.loads(raw)
+
+
+def judge(item: dict) -> tuple[bool, int, str]:
+    raw = ollama(
+        [
+            {"role": "system", "content": JUDGE_SYSTEM},
+            {"role": "user", "content": json.dumps(item, ensure_ascii=False)},
+        ],
+        0.2,
+    )
+    result = json.loads(raw)
+    return (
+        bool(result.get("keep")),
+        int(result.get("score", 0)),
+        str(result.get("reason", "")),
+    )
 
 
 def main():
@@ -159,34 +185,43 @@ def main():
         for line in output.read_text(encoding="utf-8").splitlines():
             try:
                 existing.add(fingerprint(json.loads(line)))
-            except json.JSONDecodeError:
+            except (json.JSONDecodeError, KeyError, TypeError):
                 pass
 
-    accepted = 0
-    rejected = 0
-    attempts = 0
+    accepted = rejected = attempts = 0
 
     with output.open("a", encoding="utf-8") as handle:
         while accepted < args.count:
+            category, description = CURRICULUM[attempts % len(CURRICULUM)]
             attempts += 1
-            category = CATEGORIES[accepted % len(CATEGORIES)]
             try:
-                item = normalize(generate_one(category))
-                if not valid_messages(item["messages"]):
+                item = normalize(generate_conversation(category, description))
+                if not structurally_valid(item["messages"]):
                     rejected += 1
+                    print(f"REJECT structural category={category}")
                     continue
+
                 key = fingerprint(item)
                 if key in existing:
                     rejected += 1
+                    print(f"REJECT duplicate category={category}")
                     continue
+
+                keep, score, reason = judge(item)
+                if not keep or score < 7:
+                    rejected += 1
+                    print(f"REJECT judge score={score} category={category}: {reason}")
+                    continue
+
                 existing.add(key)
+                item["_meta"] = {"category": category, "quality_score": score}
                 handle.write(json.dumps(item, ensure_ascii=False) + "\n")
                 handle.flush()
                 accepted += 1
-                print(f"accepted={accepted}/{args.count} rejected={rejected} category={category}")
+                print(f"KEEP {accepted}/{args.count} category={category} score={score}")
             except Exception as exc:
                 rejected += 1
-                print(f"rejected={rejected}: {exc}")
+                print(f"REJECT error category={category}: {exc}")
 
     print(f"Finished: accepted={accepted}, rejected={rejected}, attempts={attempts}")
     print(f"Dataset: {output}")
