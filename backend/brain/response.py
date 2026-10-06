@@ -13,6 +13,40 @@ _CONVERSATIONAL_INTENTS = {
 
 
 def _local_answer(intent: str, message: str, context=None):
+    text = " ".join(str(message or "").lower().split())
+
+    # Deterministic conversational responses must not depend on the optional
+    # local decoder. These are core assistant behaviors.
+    if text in {"hi", "hello", "hey", "hey medha", "hi medha", "hello medha"}:
+        return f"Hi {OWNER_NAME}. I'm here. How are you?", "local_brain"
+
+    if text in {"how are you", "how are you?", "how r u", "how r u?"}:
+        return "I'm doing well, Sathwik. I'm running locally and ready to talk.", "local_brain"
+
+    if text in {"so", "then", "and then"}:
+        return "I'm here. Tell me what you want to do next.", "local_brain"
+
+    if text in {
+        "who am i", "who am i?", "do you know who i am",
+        "do you know who i am?", "did you know who i am",
+        "did you know who i am?", "you know who i am right",
+        "you know who i am right?", "do you know me",
+        "do you know me?"
+    }:
+        return (
+            f"You're {OWNER_NAME}, my creator and host. "
+            "I know that from my configured identity and memory; I don't physically see you."
+        ), "local_brain"
+
+    if text in {
+        "can you see me", "can you see me?", "you can see me",
+        "you can see me?", "i know you can see me", "i know u can see me"
+    }:
+        return (
+            f"I know you're {OWNER_NAME}, my creator and host. "
+            "I can't actually see you or access your camera unless you explicitly provide an image or camera input."
+        ), "local_brain"
+
     if intent == "greeting":
         return f"Hello {OWNER_NAME}. I'm Medha, ready to help.", "local_brain"
     if intent == "status":
@@ -115,21 +149,24 @@ def generate_response(message, context, knowledge, search_manager, user_id=None)
         if not policy_check["allowed"]:
             return {"answer": policy_check["response"], "source": "core_override"}
 
-    # Memory answers take precedence over retrieval for learned personal facts.
-    answer = UNDERSTANDING.best_memory_answer(message, context, user_id)
-    if answer:
-        return {
-            "answer": answer,
-            "source": "memory",
-            "intent": intent,
-            "confidence": parsed["confidence"],
-        }
-
+    # Core conversational behavior must win over learned memory. Otherwise a
+    # weak/accidental memory match can hijack simple messages such as "hi".
     local = _local_answer(intent, message, context)
     if local:
         return {
             "answer": local[0],
             "source": local[1],
+            "intent": intent,
+            "confidence": parsed["confidence"],
+        }
+
+    # Learned personal facts are consulted after deterministic conversation
+    # handling, but before generative/retrieval fallbacks.
+    answer = UNDERSTANDING.best_memory_answer(message, context, user_id)
+    if answer:
+        return {
+            "answer": answer,
+            "source": "memory",
             "intent": intent,
             "confidence": parsed["confidence"],
         }
