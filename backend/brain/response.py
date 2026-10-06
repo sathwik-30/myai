@@ -164,7 +164,7 @@ def generate_response(message, context, knowledge, search_manager, user_id=None)
     # execute privileged tools through this path.
     try:
         from backend.llm.router import router
-        if router.provider_name == "local":
+        if router.provider_name == "ollama":
             messages = []
             for item in (context or [])[-8:]:
                 role = str(item.get("role", "user")).lower()
