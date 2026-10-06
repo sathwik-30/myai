@@ -129,6 +129,8 @@ class LocalLanguageEngine:
 
         texts = [r["text"] for r in rows]
         labels = [r["intent"] for r in rows]
+        if len(set(labels)) < 2:
+            raise RuntimeError("Medha NLU needs at least two distinct intents.")
         self.vectorizer = FeatureUnion([
             (
                 "word",
