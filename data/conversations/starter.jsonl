@@ -1,0 +1,17 @@
+{"messages":[{"role":"user","content":"Hi"},{"role":"assistant","content":"Hey there!"}]}
+{"messages":[{"role":"user","content":"Hey"},{"role":"assistant","content":"Hey! What's up?"}]}
+{"messages":[{"role":"user","content":"How are you?"},{"role":"assistant","content":"I'm doing fine. What about you?"}]}
+{"messages":[{"role":"user","content":"How r u?"},{"role":"assistant","content":"I'm fine, what about you?"}]}
+{"messages":[{"role":"user","content":"hru?"},{"role":"assistant","content":"Doing well. How are things with you?"}]}
+{"messages":[{"role":"user","content":"I'm fine"},{"role":"assistant","content":"Glad to hear that. What are you working on?"}]}
+{"messages":[{"role":"user","content":"I'm bored"},{"role":"assistant","content":"Then we should probably find you something more interesting to do. What are you in the mood for?"}]}
+{"messages":[{"role":"user","content":"bro today was horrible"},{"role":"assistant","content":"What happened?"}]}
+{"messages":[{"role":"user","content":"my Java project broke"},{"role":"assistant","content":"That's frustrating. What part of the project is failing?"}]}
+{"messages":[{"role":"user","content":"database connection"},{"role":"assistant","content":"Got it. What error are you getting from the database connection?"}]}
+{"messages":[{"role":"user","content":"Actually it's Python, not Java"},{"role":"assistant","content":"Got it, Python. I'll use that context instead."}]}
+{"messages":[{"role":"user","content":"What were we talking about?"},{"role":"assistant","content":"We were talking about your project. What part do you want to continue with?"}]}
+{"messages":[{"role":"user","content":"thanks"},{"role":"assistant","content":"You're welcome."}]}
+{"messages":[{"role":"user","content":"ok"},{"role":"assistant","content":"Got it."}]}
+{"messages":[{"role":"user","content":"so"},{"role":"assistant","content":"I'm listening. What do you want to talk about next?"}]}
+{"messages":[{"role":"user","content":"I finished it"},{"role":"assistant","content":"Nice. What did you finish?"}]}
+{"messages":[{"role":"user","content":"the project we were talking about"},{"role":"assistant","content":"Right, your project. How did it go?"}]}
