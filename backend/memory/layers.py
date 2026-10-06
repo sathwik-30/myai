@@ -451,7 +451,7 @@ def list_memories(scope: str, user_id: Optional[int], limit: int = 100) -> List[
 
 
 def delete_memory(scope: str, user_id: int, memory_id: int) -> bool:
-    if scope not in SCOPES:
+    if scope not in SCOPES or scope == KNOWLEDGE:
         return False
     _init()
     table = _table(scope)
@@ -462,6 +462,12 @@ def delete_memory(scope: str, user_id: int, memory_id: int) -> bool:
         )
         db.commit()
     return cur.rowcount > 0
+
+
+def cleanup_memory() -> None:
+    """Remove expired temporary/knowledge records and refresh no stale state."""
+    _init()
+    _cleanup()
 
 
 def counts(user_id: int) -> Dict[str, int]:
