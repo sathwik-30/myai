@@ -1,24 +1,21 @@
-"""Local pretrained language-model runtime for Medha.
+"""Local Medha conversational-model runtime.
 
-The model is loaded locally after its first download and is never called
-through a hosted API. Set MEDHA_BASE_MODEL to a local model directory or
-a Hugging Face model id.
+Medha runtime loads only the trained Medha checkpoint. Teacher/base models
+such as Qwen are training dependencies, never runtime dependencies.
 """
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
 import torch
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 LOCAL_TRAINED_MODEL = PROJECT_ROOT / "models" / "conversational-medha"
-DEFAULT_MODEL = os.getenv("MEDHA_BASE_MODEL", str(LOCAL_TRAINED_MODEL) if LOCAL_TRAINED_MODEL.exists() else "Qwen/Qwen2.5-0.5B-Instruct")
 
 
 class TransformerRuntime:
-    def __init__(self, model_name: str = DEFAULT_MODEL):
-        self.model_name = model_name
+    def __init__(self, model_name: str | None = None):
+        self.model_name = model_name or str(LOCAL_TRAINED_MODEL)
         self.tokenizer = None
         self.model = None
         self.error: str | None = None
@@ -29,6 +26,13 @@ class TransformerRuntime:
         return self.model is not None and self.tokenizer is not None
 
     def _load(self) -> None:
+        if not LOCAL_TRAINED_MODEL.exists():
+            self.error = (
+                "Medha's trained conversational model is not available yet. "
+                "Train models/conversational-medha before starting the learned brain."
+            )
+            return
+
         try:
             from transformers import AutoModelForCausalLM, AutoTokenizer
 
@@ -36,7 +40,7 @@ class TransformerRuntime:
             dtype = torch.float16 if torch.cuda.is_available() else torch.float32
             self.model = AutoModelForCausalLM.from_pretrained(
                 self.model_name,
-                torch_dtype=dtype,
+                dtype=dtype,
                 low_cpu_mem_usage=True,
             )
             self.model.eval()
@@ -56,7 +60,7 @@ class TransformerRuntime:
         top_p: float = 0.9,
     ) -> str:
         if not self.available:
-            raise RuntimeError(self.error or "Transformer language model is unavailable.")
+            raise RuntimeError(self.error or "Medha conversational model is unavailable.")
 
         inputs = self.tokenizer.apply_chat_template(
             messages,
