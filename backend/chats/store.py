@@ -10,6 +10,7 @@ def _connect():
     db.row_factory = sqlite3.Row
     db.execute("PRAGMA busy_timeout=15000")
     db.execute("PRAGMA journal_mode=WAL")
+    db.execute("PRAGMA foreign_keys=ON")
     return db
 
 def init_chat_tables():
@@ -27,10 +28,11 @@ def init_chat_tables():
             id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL, title TEXT NOT NULL,
             created_at TEXT NOT NULL, updated_at TEXT NOT NULL)""")
         db.execute("""CREATE TABLE IF NOT EXISTS chat_messages (
-            id INTEGER PRIMARY KEY, chat_id INTEGER NOT NULL, role TEXT NOT NULL,
+            id INTEGER PRIMARY KEY, chat_id INTEGER NOT NULL REFERENCES chats(id) ON DELETE CASCADE, role TEXT NOT NULL,
             message TEXT NOT NULL, source TEXT, latency_ms INTEGER, created_at TEXT NOT NULL)""")
         db.execute("CREATE INDEX IF NOT EXISTS idx_chats_user ON chats(user_id, updated_at DESC)")
         db.execute("CREATE INDEX IF NOT EXISTS idx_messages_chat ON chat_messages(chat_id, id)")
+        db.execute("CREATE INDEX IF NOT EXISTS idx_users_username ON users(username)")
         db.commit()
 
 def _now():
