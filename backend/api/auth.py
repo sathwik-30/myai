@@ -6,8 +6,26 @@ from backend.auth.dependencies import current_user
 from backend.chats.store import create_user, get_user, has_admin, update_password
 import hashlib
 import secrets
+import time
+from collections import defaultdict, deque
+
+from fastapi import Request
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+_RATE_WINDOW_SECONDS = 60
+_RATE_LIMIT = 8
+_attempts = defaultdict(deque)
+
+def _rate_limit(request: Request, bucket: str) -> None:
+    now = time.monotonic()
+    key = f"{bucket}:{request.client.host if request.client else 'unknown'}"
+    queue = _attempts[key]
+    while queue and now - queue[0] > _RATE_WINDOW_SECONDS:
+        queue.popleft()
+    if len(queue) >= _RATE_LIMIT:
+        raise HTTPException(status_code=429, detail="Too many authentication attempts. Try again later.")
+    queue.append(now)
 
 
 class AuthRequest(BaseModel):
@@ -16,7 +34,8 @@ class AuthRequest(BaseModel):
 
 
 @router.post("/register")
-def register(request: AuthRequest):
+def register(request: AuthRequest, request_context: Request):
+    _rate_limit(request_context, "register")
     username = request.username.strip().lower()
     role = "creator" if not has_admin() else "user"
     recovery_code = secrets.token_urlsafe(18)
@@ -40,7 +59,8 @@ def register(request: AuthRequest):
 
 
 @router.post("/login")
-def login(request: AuthRequest):
+def login(request: AuthRequest, request_context: Request):
+    _rate_limit(request_context, "login")
     username = request.username.strip().lower()
     user = get_user(username)
     if not user or not verify_password(request.password, user["password_hash"]):
@@ -76,7 +96,8 @@ def change_password(request: PasswordChangeRequest, user=Depends(current_user)):
 
 
 @router.post("/password/reset")
-def reset_password(request: PasswordResetRequest):
+def reset_password(request: PasswordResetRequest, request_context: Request):
+    _rate_limit(request_context, "reset")
     username = request.username.strip().lower()
     account = get_user(username)
     if not account:
