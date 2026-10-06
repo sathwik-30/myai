@@ -20,8 +20,7 @@ function getErrorMessage(data, fallback) {
 
 async function apiRequest(path, options = {}) {
     let lastError = null;
-    const timeoutMs = options.timeoutMs ?? 8000;
-    const { timeoutMs: _timeoutMs, ...fetchOptions } = options;
+    const { timeoutMs = 8000, ...fetchOptions } = options;
 
     for (const base of API_CANDIDATES) {
         const controller = new AbortController();
@@ -56,7 +55,7 @@ async function apiRequest(path, options = {}) {
 async function jsonRequest(path, options = {}) {
     const response = await apiRequest(path, options);
     let data = {};
-    try { data = await response.json(); } catch {}
+    try { data = await response.json(); } catch { data = {}; }
     if (!response.ok) {
         const error = new Error(getErrorMessage(data, `HTTP ${response.status}`));
         error.status = response.status;
@@ -373,12 +372,42 @@ function App() {
 
     useEffect(() => {
         if (!username) return;
-        loadChats()
-            .then((nextChats) => nextChats.length ? openChat(nextChats[0].id) : null)
-            .catch((err) => {
-                if (err.status === 401) logout();
-                else setError(err.message);
-            });
+        let cancelled = false;
+
+        const initializeChats = async () => {
+            try {
+                const data = await jsonRequest("/chats");
+                const nextChats = data.chats || [];
+                if (cancelled) return;
+                setChats(nextChats);
+                if (!nextChats.length) return;
+
+                const chatData = await jsonRequest(`/chats/${nextChats[0].id}`);
+                if (cancelled) return;
+                setActiveChat(chatData.chat);
+                setMessages(chatData.messages || []);
+                setError("");
+            } catch (err) {
+                if (cancelled) return;
+                if (err.status === 401) {
+                    localStorage.removeItem("medha_token");
+                    localStorage.removeItem("medha_username");
+                    localStorage.removeItem("medha_role");
+                    setUsername("");
+                    setRole("user");
+                    setChats([]);
+                    setMessages([]);
+                    setActiveChat(null);
+                } else {
+                    setError(err.message);
+                }
+            }
+        };
+
+        void initializeChats();
+        return () => {
+            cancelled = true;
+        };
     }, [username]);
 
     useEffect(() => {
