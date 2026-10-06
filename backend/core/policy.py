@@ -14,6 +14,15 @@ def _load_lines() -> List[str]:
         return []
 
 
+def load_override() -> str:
+    """Return the complete human-readable core override policy."""
+    try:
+        with open(OVERRIDE_PATH, "r", encoding="utf-8") as file:
+            return file.read().strip()
+    except OSError:
+        return ""
+
+
 def load_policy() -> Dict[str, Any]:
     """Load explicit machine-readable rules from the human-readable override.
 
