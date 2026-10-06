@@ -187,10 +187,15 @@ function App() {
     };
 
     const openChat = async (chatId) => {
-        const data = await jsonRequest(`/chats/${chatId}`);
-        setActiveChat(data.chat);
-        setMessages(data.messages || []);
-        setError("");
+        try {
+            const data = await jsonRequest(`/chats/${chatId}`);
+            setActiveChat(data.chat);
+            setMessages(data.messages || []);
+            setError("");
+        } catch (err) {
+            if (err.status === 401) logout();
+            else setError(`Could not open chat: ${err.message}`);
+        }
     };
 
     const newChat = async (initialPrompt = "") => {
@@ -309,12 +314,17 @@ function App() {
 
     const deleteActive = async () => {
         if (!activeChat || !window.confirm("Delete this chat and its messages?")) return;
-        await jsonRequest(`/chats/${activeChat.id}`, { method: "DELETE" });
-        setActiveChat(null);
-        setMessages([]);
-        const data = await jsonRequest("/chats");
-        setChats(data.chats || []);
-        if (data.chats?.length) await openChat(data.chats[0].id);
+        try {
+            await jsonRequest(`/chats/${activeChat.id}`, { method: "DELETE" });
+            setActiveChat(null);
+            setMessages([]);
+            const data = await jsonRequest("/chats");
+            setChats(data.chats || []);
+            if (data.chats?.length) await openChat(data.chats[0].id);
+        } catch (err) {
+            if (err.status === 401) logout();
+            else setError(`Could not delete chat: ${err.message}`);
+        }
     };
 
     const changePassword = async () => {
@@ -349,6 +359,8 @@ function App() {
     };
 
     const logout = () => {
+        requestControllerRef.current?.abort();
+        requestControllerRef.current = null;
         localStorage.removeItem("medha_token");
         localStorage.removeItem("medha_username");
         localStorage.removeItem("medha_role");
