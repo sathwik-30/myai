@@ -12,10 +12,26 @@ from backend.brain.local_nlu import get_language_engine
 
 
 class ModelRouter:
-    provider_name = "local"
-
     def __init__(self):
         self._ollama = None
+
+    @property
+    def provider_name(self) -> str:
+        try:
+            ollama = self._get_ollama()
+            if ollama.available():
+                return "ollama"
+        except Exception:
+            pass
+
+        try:
+            from backend.model.runtime import get_decoder_runtime
+            if get_decoder_runtime().available:
+                return "local-decoder"
+        except Exception:
+            pass
+
+        return "none"
 
     def _get_ollama(self):
         if self._ollama is None:
@@ -38,8 +54,8 @@ class ModelRouter:
         model: str | None = None,
         temperature: float = 0.7,
     ) -> Dict[str, Any]:
-        # The small Medha decoder is intentionally handled by the brain runtime.
-        # This router supplies a practical local conversational fallback.
+        # The conversational response layer owns decoder generation. This
+        # boundary is only the provider fallback and must report reality.
         ollama = self._get_ollama()
         if ollama.available():
             return ollama.generate(
@@ -49,8 +65,8 @@ class ModelRouter:
                 temperature=temperature,
             )
         raise RuntimeError(
-            "No local conversational model is available. Train/promote the "
-            "Medha decoder or start Ollama with a local model."
+            "No local conversational provider is available. "
+            "Promote a Medha decoder checkpoint or start Ollama with a local model."
         )
 
 
