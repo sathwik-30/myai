@@ -189,16 +189,11 @@ class ConversationEngine:
         return {"response": response, "source": source}
 
     @staticmethod
-    def _safe_local_response(message):
-        text = " ".join(str(message or "").lower().split())
-        if text in {"hi", "hello", "hey", "hey medha"}:
-            return "Hey Sathwik. I'm here.", "memory"
-        if text in {"thanks", "thank you"}:
-            return "You're welcome.", "memory"
-        if text in {"how are you", "how are you?"}:
-            return "I'm functioning normally and ready to talk with you.", "memory"
-        return ("I hit a temporary problem while processing that. Your message is saved, "
-                "so you can retry it without losing the conversation.", "fallback")
+    def _safe_local_response():
+        return (
+            "I hit a temporary problem while processing that. Please try again.",
+            "fallback",
+        )
 
     def history(self):
         return self.context.get_messages()
