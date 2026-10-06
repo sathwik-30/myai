@@ -100,14 +100,16 @@ def reset_password(request: PasswordResetRequest, request_context: Request):
     _rate_limit(request_context, "reset")
     username = request.username.strip().lower()
     account = get_user(username)
+    # Do not reveal whether a username exists to unauthenticated recovery callers.
+    generic_error = "Invalid username or recovery code"
     if not account:
-        raise HTTPException(status_code=404, detail="Account not found")
+        raise HTTPException(status_code=401, detail=generic_error)
     stored = account.get("recovery_code_hash")
     if not stored:
-        raise HTTPException(status_code=400, detail="This account does not have a recovery code. Generate one while signed in first.")
+        raise HTTPException(status_code=401, detail=generic_error)
     supplied = hashlib.sha256(request.recovery_code.strip().encode()).hexdigest()
     if not secrets.compare_digest(supplied, stored):
-        raise HTTPException(status_code=401, detail="Invalid recovery code")
+        raise HTTPException(status_code=401, detail=generic_error)
 
     if not update_password(
         account["id"],
