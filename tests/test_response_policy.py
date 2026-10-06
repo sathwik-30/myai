@@ -79,3 +79,10 @@ def test_recovery_errors_do_not_reveal_account_existence():
                 assert exc.detail == "Invalid username or recovery code"
             else:
                 raise AssertionError("reset_password should reject unknown users")
+
+
+def test_core_override_loader_returns_policy_text():
+    from backend.core.policy import load_override
+
+    override = load_override()
+    assert "MEDHA CORE AUTHORITY" in override
