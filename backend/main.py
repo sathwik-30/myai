@@ -1,5 +1,6 @@
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+import os
 
 from backend.api.chat import router
 from backend.api.auth import router as auth_router
@@ -20,9 +21,14 @@ app = FastAPI(
     description="Independent local personal AI system with identity, memory, tools, autonomy, and trainable local model foundations.",
 )
 
+allowed_origins = [item.strip() for item in os.getenv(
+    "MEDHA_ALLOWED_ORIGINS",
+    "http://localhost:5173,http://127.0.0.1:5173",
+).split(",") if item.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -65,6 +71,11 @@ def remove_memory(memory_scope: str, memory_id: int, user=Depends(current_user))
 @app.get("/api/health")
 def health():
     nlu_available = get_language_engine().available
+    try:
+        from backend.llm.ollama import provider as ollama_provider
+        ollama_available = ollama_provider.available()
+    except Exception:
+        ollama_available = False
     training_checkpoint = checkpoint_exists()
     production_model = production_checkpoint_exists()
     promotion = promotion_status()
@@ -73,7 +84,7 @@ def health():
         "service": "medha-backend",
         "memory_layers": True,
         "runtime_model": "local-nlu",
-        "ollama": False,
+        "ollama": ollama_available,
         "model_provider": model_router.provider_name,
         "runtime_nlu_available": nlu_available,
         "trainable_decoder_checkpoint": training_checkpoint,
