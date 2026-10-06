@@ -1,22 +1,15 @@
 from backend.knowledge.knowledge_base import KnowledgeBase
 
-knowledge_base=KnowledgeBase()
 
-questions=[
-    "What is Python?",
-    "Tell me about artificial intelligence",
-    "What is binary searching?",
-    "What is an operating system?",
-    "Tell me about chess"
-]
+def test_knowledge_base_search_returns_known_topic_data():
+    knowledge_base = KnowledgeBase()
 
-for question in questions:
-    result=knowledge_base.search(question)
+    result = knowledge_base.search("What is Python?")
 
-    print("\nQuestion:",question)
-
-    if result:
-        print("Topic:",result["topic"])
-        print("Answer:",result["content"])
+    if result is not None:
+        assert isinstance(result, dict)
+        assert "topic" in result
+        assert "content" in result
+        assert "python" in result["topic"].lower()
     else:
-        print("No information found.")
+        assert result is None

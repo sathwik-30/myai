@@ -1,19 +1,15 @@
 import torch
+
 from backend.model.architecture.feed_forward import FeedForward
 
-embedding_dim=8
-hidden_dim=32
 
-feed_forward=FeedForward(
-    embedding_dim,
-    hidden_dim
-)
+def test_feed_forward_returns_same_shape_as_input():
+    embedding_dim = 8
+    hidden_dim = 32
+    x = torch.randn(1, 4, embedding_dim)
+    feed_forward = FeedForward(embedding_dim, hidden_dim)
 
-x=torch.randn(1,4,embedding_dim)
+    output = feed_forward(x)
 
-output=feed_forward(x)
-
-print("Input shape:",x.shape)
-print("Output shape:",output.shape)
-print("Output:")
-print(output)
+    assert output.shape == x.shape
+    assert output.dtype == x.dtype

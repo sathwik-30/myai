@@ -97,13 +97,15 @@ function AuthScreen({ onLogin }) {
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ username, password }),
             });
+            const nextRole = (data.role || "user").toLowerCase();
             localStorage.setItem("medha_token", data.token);
             localStorage.setItem("medha_username", data.username);
+            localStorage.setItem("medha_role", nextRole);
 
             if (mode === "register" && data.recovery_code) {
                 window.alert(`Account created. Save this recovery code somewhere safe:\n\n${data.recovery_code}`);
             }
-            onLogin(data.username);
+            onLogin(data.username, nextRole);
         } catch (err) {
             setError(err.message || "Authentication failed");
         } finally {
@@ -163,6 +165,7 @@ function AuthScreen({ onLogin }) {
 
 function App() {
     const [username, setUsername] = useState(localStorage.getItem("medha_username") || "");
+    const [role, setRole] = useState((localStorage.getItem("medha_role") || "user").toLowerCase());
     const [chats, setChats] = useState([]);
     const [activeChat, setActiveChat] = useState(null);
     const [messages, setMessages] = useState([]);
@@ -339,10 +342,17 @@ function App() {
         }
     };
 
+    const handleLogin = (nextUsername, nextRole = "user") => {
+        setUsername(nextUsername);
+        setRole(String(nextRole || "user").toLowerCase());
+    };
+
     const logout = () => {
         localStorage.removeItem("medha_token");
         localStorage.removeItem("medha_username");
+        localStorage.removeItem("medha_role");
         setUsername("");
+        setRole("user");
         setChats([]);
         setMessages([]);
         setActiveChat(null);
@@ -362,7 +372,7 @@ function App() {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }, [messages, loading]);
 
-    if (!username) return <AuthScreen onLogin={setUsername} />;
+    if (!username) return <AuthScreen onLogin={handleLogin} />;
 
     return (
         <div className="app-shell">
@@ -381,7 +391,13 @@ function App() {
                     {!chats.length && <p className="empty-side">No conversations yet.</p>}
                 </div>
                 <div className="sidebar-bottom">
-                    <div className="account"><span className="account-avatar">{username[0]?.toUpperCase()}</span><span>{username}</span></div>
+                    <div className="account">
+                        <span className="account-avatar">{username[0]?.toUpperCase()}</span>
+                        <div className="account-meta">
+                            <span className="account-name">{username}</span>
+                            <span className="account-role">{role === "creator" ? "Creator" : role === "host" ? "Host" : role === "admin" ? "Admin" : "User"}</span>
+                        </div>
+                    </div>
                     <button className="side-action" onClick={renameActive} disabled={!activeChat}>Rename</button>
                     <button className="side-action" onClick={changePassword}>Change password</button>
                     <button className="side-action" onClick={generateRecoveryCode}>Recovery code</button>
