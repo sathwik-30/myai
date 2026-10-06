@@ -42,9 +42,10 @@ async function apiRequest(path, options = {}) {
             });
             return response;
         } catch (error) {
-            lastError = error.name === "AbortError"
-                ? new Error("Medha backend request timed out or was cancelled.")
-                : error;
+            // User cancellation must not be treated as a failed backend request,
+            // and it must not fall through to another API candidate.
+            if (error.name === "AbortError") throw error;
+            lastError = error;
         } finally {
             clearTimeout(timer);
         }
