@@ -1,0 +1,4 @@
+# Optional dependencies for Medha's learned conversational brain
+-r backend/requirements.txt
+transformers>=4.37
+accelerate
