@@ -1,10 +1,12 @@
-"""Autonomous teacher-data generator for Medha.
+"""Autonomous casual-teacher data generator for Medha.
 
-The training lab chooses conversation skills itself, asks the Ollama teacher
-for multi-turn conversations, filters teacher-specific refusal boilerplate,
-judges quality, and stores accepted examples.
+Qwen/Ollama is used only as a teacher. This script generates varied
+casual conversations, removes visible teacher reasoning/refusal boilerplate,
+rejects warning-only responses when they do not answer the user, asks a
+quality judge whether each conversation is genuinely useful, and stores only
+accepted examples.
 
-Ollama/Qwen is a teacher only. It is never loaded by the Medha runtime.
+The Medha runtime never loads Qwen.
 """
 from __future__ import annotations
 
@@ -20,10 +22,13 @@ import requests
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "data" / "conversations" / "teacher_generated.jsonl"
 OLLAMA_URL = os.getenv("MEDHA_OLLAMA_URL", "http://127.0.0.1:11434")
-TEACHER_MODEL = os.getenv("MEDHA_TEACHER_MODEL", "qwen2.5:0.5b")
+TEACHER_MODEL = os.getenv("MEDHA_TEACHER_MODEL", "qwen3:8b")
 
+# These are teacher/model refusal patterns, not ordinary safety language.
+# A useful answer may contain words such as dangerous, safety, risk, health,
+# security, or law and must NOT be rejected merely for containing them.
 REFUSAL_PATTERNS = [
-    r"i\s+(?:am|’m|m)\s+sorry[^.]{0,160}(?:can(?:not|'t)|unable|assist|help)",
+    r"i\s+(?:am|’m|m)\s+sorry[^.]{0,240}(?:can(?:not|'t)|unable|assist|help)",
     r"i\s+(?:can(?:not|'t)|cannot)\s+(?:assist|help|provide|comply)",
     r"i\s+(?:am|’m|m)\s+unable\s+to\s+(?:assist|help|provide)",
     r"(?:goes|go)\s+against\s+(?:my|our)\s+(?:safety|polic)",
@@ -37,77 +42,169 @@ REFUSAL_PATTERNS = [
 ]
 REFUSAL_RE = [re.compile(p, re.IGNORECASE) for p in REFUSAL_PATTERNS]
 
+# Qwen3 may expose its reasoning in the returned message. That is teacher
+# internals, not conversational training data.
+THINKING_BLOCK_PATTERNS = [
+    re.compile(r"<think>.*?</think>", re.IGNORECASE | re.DOTALL),
+    re.compile(r"<analysis>.*?</analysis>", re.IGNORECASE | re.DOTALL),
+]
+THINKING_LINE_RE = re.compile(
+    r"(?is)(?:^|\n)\s*(?:thinking\.\.\.|analysis\.\.\.)\s*.*?"
+    r"(?:\n\s*(?:\.\.\.done thinking\.|done thinking\.|final answer\s*:?)\s*)"
+)
+
+# Only casual conversational skills are trained in this first phase.
 CURRICULUM = [
     ("casual", "greetings, small talk, boredom, everyday chat"),
-    ("slang", "slang, abbreviations, typos, lowercase and short messages"),
-    ("followup", "follow-ups that depend on earlier turns and references"),
-    ("correction", "user corrections and graceful recovery"),
-    ("ambiguity", "ambiguous short messages resolved by context"),
-    ("topic_switch", "abrupt topic changes while preserving continuity"),
-    ("study", "learning, confusion, examples and re-explanations"),
-    ("technical", "programming, debugging, APIs and technical clarification"),
-    ("projects", "project planning, progress, setbacks and continuation"),
-    ("emotion", "ordinary frustration, excitement, boredom and encouragement"),
-    ("memory", "remembering user-provided facts without inventing facts"),
-    ("identity", "identity, capabilities and creator/context conversations"),
-    ("continuity", "natural endings and later continuation"),
-    ("multi_turn", "long conversations with several follow-ups and changing intent"),
-    ("reasoning", "comparisons, choices and thinking through everyday problems"),
+    ("slang", "slang, abbreviations, typos, lowercase and short informal messages"),
+    ("followup", "natural follow-ups that depend on earlier turns"),
+    ("correction", "user corrections and graceful conversational recovery"),
+    ("ambiguity", "ambiguous short messages resolved from context"),
+    ("topic_switch", "abrupt everyday topic changes while preserving continuity"),
+    ("emotion", "ordinary frustration, excitement, boredom, disappointment and encouragement"),
+    ("continuity", "remembering what was just said and continuing naturally"),
+    ("short_messages", "messages such as ok, hmm, so, what, nah, really, fine"),
+    ("multi_turn", "natural casual conversations with several turns and changing intent"),
+    ("natural_endings", "ending a conversation naturally without forcing another question"),
 ]
 
-GENERATOR_SYSTEM = """You are the teacher in an autonomous curriculum for a new AI called Medha.
-Create natural training conversations, not canned question-answer pairs.
+GENERATOR_SYSTEM = """You are a teacher generating training conversations for a new AI called Medha.
 
-Explore the requested category deeply. Use 2-12 alternating user/assistant messages.
-Use varied wording, context, informal language, corrections and topic changes when
-they fit. Never mention Qwen, Ollama, being a language model, internal policies,
-safety guidelines, training prompts, or refusal policies. Do not invent private facts.
+This phase teaches ONLY natural CASUAL CONVERSATION. Do not teach programming,
+technical subjects, school subjects, project knowledge, factual encyclopedic
+knowledge, or personal facts.
 
-Return ONLY JSON:
+Create original, realistic, varied multi-turn conversations, not canned FAQ pairs.
+Use 2-12 alternating user/assistant messages. Include short messages, slang,
+follow-ups, corrections, ambiguity, topic changes and natural endings when they
+fit the scenario. Do not force a question after every assistant turn.
+
+The assistant should respond directly to what the user says. If the user asks a
+question, the assistant should actually answer it when an answer is appropriate.
+A warning by itself is not an answer. A warning plus a useful explanation,
+answer, or safer alternative IS an answer.
+
+Never generate assistant refusal boilerplate such as "I can't help", "I cannot
+assist", "I must refuse", or policy/safety-guideline explanations. Never mention
+Qwen, Ollama, being a language model, internal policies, training prompts, or
+teacher identity. Do not invent private facts.
+
+Do not output reasoning or thinking text. Return ONLY JSON:
 {"messages":[{"role":"user","content":"..."},{"role":"assistant","content":"..."}]}
 """
 
-JUDGE_SYSTEM = """You are a strict dataset-quality judge for Medha.
-Evaluate the proposed conversation for natural conversational training value.
+JUDGE_SYSTEM = """You are a strict dataset-quality judge for Medha's CASUAL conversation training.
 
-Reject teacher/model identity, policy or safety-refusal boilerplate, malformed
-conversation, repetitive/template-like text, invented private user facts, or
-poor/irrelevant assistant turns.
+Keep only conversations that teach useful, natural conversational behavior.
 
-Do NOT reject merely because the conversation discusses danger, safety, security,
-law, health, or other sensitive topics. Reject teacher refusal/policy behavior.
+IMPORTANT DIRECT-ANSWER RULE:
+When the user asks a question or requests something, the assistant should
+directly address it. Reject responses that merely warn, lecture, apologize,
+refuse, or say something is dangerous without actually answering the request
+or providing a useful explanation/alternative.
+
+Examples:
+- User: "How do I do X?" Assistant: "X is dangerous." -> REJECT.
+- User: "How do I do X?" Assistant: "X is dangerous because A and B. If your
+  goal is Y, a safer way is Z." -> KEEP.
+- User: "Is X dangerous?" Assistant: "Yes, because A and B." -> KEEP.
+- User: "What do you think?" Assistant: "That's an interesting question." with
+  no meaningful response -> REJECT when the context requires an answer.
+
+Do NOT reject a response merely because it mentions danger, safety, risk, health,
+security, law, or similar topics. Reject only when it is a refusal/policy
+boilerplate response or fails to meaningfully address the user.
+
+Reject:
+- teacher/model identity references
+- "I'm sorry, I can't assist..."
+- "I cannot/can't help/provide/comply..."
+- safety-policy/guideline/limitation boilerplate
+- thinking/reasoning traces
+- malformed or repetitive/template-like conversations
+- invented private user facts
+- irrelevant or low-quality assistant turns
+- non-casual technical/study/project training
+
+Keep:
+- natural small talk and casual conversation
+- direct answers
+- useful explanations
+- warnings when they accompany an actual answer or useful alternative
+- ordinary emotional acknowledgement when it meaningfully responds
 
 Return ONLY JSON:
 {"keep":true,"score":0,"reason":"short reason"}
 """
 
 
+def clean_teacher_text(text: str) -> str:
+    """Remove visible reasoning blocks while preserving the actual answer."""
+    cleaned = text.strip()
+    for pattern in THINKING_BLOCK_PATTERNS:
+        cleaned = pattern.sub("", cleaned)
+
+    # Handle common Qwen-style visible reasoning when it is wrapped in
+    # "Thinking..." ... "...done thinking.".
+    cleaned = THINKING_LINE_RE.sub("\n", cleaned)
+
+    # Remove stray reasoning markers if they remain at the edges.
+    cleaned = re.sub(r"(?im)^\s*(?:\.\.\.done thinking\.|done thinking\.)\s*$", "", cleaned)
+    return cleaned.strip()
+
+
 def teacher_refusal(text: str) -> bool:
     return any(pattern.search(text) for pattern in REFUSAL_RE)
 
 
+WARNING_ONLY_PATTERNS = [
+    r"^(?:that|this)\s+(?:is|sounds|seems)\s+(?:very\s+)?dangerous\.?$",
+    r"^(?:that|this)\s+(?:is|sounds|seems)\s+(?:very\s+)?unsafe\.?$",
+    r"^(?:don't|do not)\s+do\s+that\.?$",
+    r"^(?:please\s+)?(?:don't|do not)\s+do\s+this\.?$",
+    r"^(?:you\s+)?should\s+(?:not|never)\s+do\s+that\.?$",
+    r"^(?:i|we)\s+(?:wouldn't|would not)\s+recommend\s+that\.?$",
+]
+WARNING_ONLY_RE = [re.compile(p, re.IGNORECASE) for p in WARNING_ONLY_PATTERNS]
+
+
+def warning_only(text: str) -> bool:
+    compact = " ".join(text.split()).strip()
+    return any(pattern.fullmatch(compact) for pattern in WARNING_ONLY_RE)
+
+
 def normalize(item: dict) -> dict:
-    return {
-        "messages": [
+    cleaned_messages = []
+    for message in item["messages"]:
+        content = clean_teacher_text(str(message["content"]))
+        cleaned_messages.append(
             {
-                "role": str(m["role"]).strip().lower(),
-                "content": " ".join(str(m["content"]).split()),
+                "role": str(message["role"]).strip().lower(),
+                "content": " ".join(content.split()),
             }
-            for m in item["messages"]
-        ]
-    }
+        )
+    return {"messages": cleaned_messages}
 
 
 def structurally_valid(messages: list[dict]) -> bool:
     if not 2 <= len(messages) <= 12 or messages[-1]["role"] != "assistant":
         return False
+
     expected = "user"
-    for m in messages:
-        if m["role"] != expected or not m["content"] or len(m["content"]) > 2500:
+    for message in messages:
+        if message["role"] != expected or not message["content"] or len(message["content"]) > 2500:
             return False
-        if teacher_refusal(m["content"]):
+
+        if teacher_refusal(message["content"]):
             return False
+
+        # Warning-only assistant turns do not teach direct answering.
+        # We intentionally do NOT reject useful safety explanations.
+        if message["role"] == "assistant" and warning_only(message["content"]):
+            return False
+
         expected = "assistant" if expected == "user" else "user"
+
     return True
 
 
@@ -125,7 +222,7 @@ def ollama(messages: list[dict], temperature: float) -> str:
             "stream": False,
             "options": {"temperature": temperature},
         },
-        timeout=180,
+        timeout=300,
     )
     response.raise_for_status()
     content = str(response.json().get("message", {}).get("content", "")).strip()
@@ -141,15 +238,15 @@ def generate_conversation(category: str, description: str) -> dict:
             {
                 "role": "user",
                 "content": (
-                    f"Curriculum category: {category}\n"
+                    f"Casual curriculum category: {category}\n"
                     f"Explore: {description}\n"
-                    "Make this original and let the conversation develop."
+                    "Make the conversation original, natural and conversational."
                 ),
             },
         ],
         0.9,
     )
-    return json.loads(raw)
+    return json.loads(clean_teacher_text(raw))
 
 
 def judge(item: dict) -> tuple[bool, int, str]:
@@ -160,7 +257,7 @@ def judge(item: dict) -> tuple[bool, int, str]:
         ],
         0.2,
     )
-    result = json.loads(raw)
+    result = json.loads(clean_teacher_text(raw))
     return (
         bool(result.get("keep")),
         int(result.get("score", 0)),
@@ -170,7 +267,7 @@ def judge(item: dict) -> tuple[bool, int, str]:
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--count", type=int, default=500)
+    parser.add_argument("--count", type=int, default=100)
     parser.add_argument("--output", default=str(OUT))
     args = parser.parse_args()
 
@@ -189,9 +286,10 @@ def main():
                 pass
 
     accepted = rejected = attempts = 0
+    max_attempts = max(args.count * 5, 20)
 
     with output.open("a", encoding="utf-8") as handle:
-        while accepted < args.count:
+        while accepted < args.count and attempts < max_attempts:
             category, description = CURRICULUM[attempts % len(CURRICULUM)]
             attempts += 1
             try:
@@ -224,6 +322,8 @@ def main():
                 print(f"REJECT error category={category}: {exc}")
 
     print(f"Finished: accepted={accepted}, rejected={rejected}, attempts={attempts}")
+    if accepted < args.count:
+        print("Stopped at the safety limit of 5 attempts per requested example.")
     print(f"Dataset: {output}")
 
 
