@@ -7,6 +7,7 @@ from backend.api.auth import router as auth_router
 from backend.api.chats import router as chats_router
 from backend.api.desktop import router as desktop_router
 from backend.api.authority import router as authority_router
+from backend.api.web import router as web_router
 from backend.auth.dependencies import current_user
 from backend.chats.store import init_chat_tables
 from backend.memory.layers import counts, delete_memory, list_memories, SCOPES
@@ -39,6 +40,7 @@ app.include_router(auth_router, prefix="/api")
 app.include_router(chats_router, prefix="/api")
 app.include_router(desktop_router, prefix="/api")
 app.include_router(authority_router, prefix="/api")
+app.include_router(web_router, prefix="/api")
 init_chat_tables()
 
 @app.get("/")
