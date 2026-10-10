@@ -170,6 +170,8 @@ function App() {
     const [activeChat, setActiveChat] = useState(null);
     const [messages, setMessages] = useState([]);
     const [input, setInput] = useState("");
+    const [webResults, setWebResults] = useState([]);
+    const [webSearching, setWebSearching] = useState(false);
     const [loading, setLoading] = useState(false);
     const [sidebarOpen, setSidebarOpen] = useState(true);
     const [error, setError] = useState("");
@@ -273,6 +275,28 @@ function App() {
                 setLoading(false);
             }
             setTimeout(() => textareaRef.current?.focus(), 0);
+        }
+    };
+
+    const searchWeb = async () => {
+        const query = input.trim();
+        if (!query || webSearching) return;
+        setWebSearching(true);
+        setError("");
+        setWebResults([]);
+        try {
+            const data = await jsonRequest("/web/search", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ query, limit: 5 }),
+                timeoutMs: 12000,
+            });
+            setWebResults(data.results || []);
+            if (!data.results?.length) setError("No web results returned. Check your internet connection and try again.");
+        } catch (err) {
+            setError(`Web search failed: ${err.message}`);
+        } finally {
+            setWebSearching(false);
         }
     };
 
@@ -494,8 +518,21 @@ function App() {
                 </main>
 
                 <div className="composer-wrap">
+                    {webResults.length > 0 && (
+                        <section aria-label="Web search results" style={{ maxWidth: 860, margin: "0 auto 12px", padding: "12px 16px", border: "1px solid var(--border-color, #ddd)", borderRadius: 12, maxHeight: 220, overflowY: "auto" }}>
+                            <strong>Web results</strong>
+                            {webResults.map((item, index) => (
+                                <article key={item.url || index} style={{ padding: "8px 0", borderBottom: "1px solid var(--border-color, #eee)" }}>
+                                    <a href={item.url} target="_blank" rel="noopener noreferrer">{item.title || item.url}</a>
+                                    <p style={{ margin: "4px 0", fontSize: 13 }}>{item.snippet}</p>
+                                    <small>{item.url}</small>
+                                </article>
+                            ))}
+                        </section>
+                    )}
                     <div className="input-area">
                         <textarea ref={textareaRef} value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); } }} placeholder={activeChat ? "Message Medha..." : "Create a chat first..."} rows="1" disabled={!activeChat}/>
+                        <button type="button" onClick={searchWeb} disabled={!input.trim() || webSearching} title="Search the public web" style={{ border: "1px solid #888", borderRadius: 10, padding: "0 12px", background: "transparent", color: "inherit", cursor: "pointer", opacity: (!input.trim() || webSearching) ? 0.5 : 1 }}>{webSearching ? "Searching…" : "Web"}</button>
                         {loading ? <button className="stop-button" onClick={stopResponse} aria-label="Stop response" title="Stop response">■</button> : <button className="send-button" onClick={sendMessage} disabled={!input.trim() || !activeChat} aria-label="Send message" title="Send message">↑</button>}
                     </div>
                     <p className="composer-hint">Enter to send · Shift + Enter for a new line</p>
