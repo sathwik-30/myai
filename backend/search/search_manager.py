@@ -55,4 +55,4 @@ class SearchManager:
         parts = [title, snippet]
         if url:
             parts.append(f"Source: {url}")
-        return "\\n".join(part for part in parts if part)
+        return "\n".join(part for part in parts if part)
