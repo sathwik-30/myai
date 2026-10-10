@@ -49,4 +49,4 @@ class SearchManager:
     @staticmethod
     def _best_web_answer(results):
         item = results[0]
-        return item.get("snippet") or item.get("title")
+        title = item.get("title") or "Web result"\n        snippet = item.get("snippet") or ""\n        url = item.get("url") or ""\n        parts = [title, snippet]\n        if url:\n            parts.append(f"Source: {url}")\n        return "\\n".join(part for part in parts if part)
