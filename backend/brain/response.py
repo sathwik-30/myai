@@ -160,7 +160,7 @@ def generate_response(message, context, knowledge, search_manager, user_id=None)
     # Normal conversation is model-generated. There is deliberately no
     # greeting/status/how-are-you lookup table here.
     memory_hint = None
-    if intent in {"identity", "personal", "permanent"}:
+    if intent in {"identity", "personal", "permanent", "general", "casual"}:
         try:
             memory_hint = UNDERSTANDING.best_memory_answer(message, context, user_id)
         except Exception:
