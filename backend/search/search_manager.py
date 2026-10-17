@@ -5,14 +5,24 @@ from backend.knowledge.resource_loader import search_resources
 
 
 class SearchManager:
-    """Route knowledge requests from cheapest/local sources to slower external sources."""
+    """Retrieve learned knowledge first, then local resources and public sources."""
 
     def __init__(self, user_id=None):
-        # Kept for learning retrieved knowledge. Memory lookup itself is done
-        # once by LanguageUnderstanding before this search pipeline runs.
         self.memory = MemoryManager(user_id=user_id)
 
     def process(self, question, context=None):
+        # Reuse knowledge learned from earlier research or explicitly taught by
+        # the owner. This is what lets paraphrased questions benefit from memory.
+        try:
+            learned = self.memory.search_knowledge(question)
+            if learned and float(learned.get("score", 0.0)) >= 0.55:
+                return {
+                    "answer": learned.get("answer"),
+                    "source": "learned_knowledge",
+                }
+        except Exception:
+            pass
+
         local_results = search_resources(question)
         if local_results:
             item = local_results[0]
@@ -39,12 +49,16 @@ class SearchManager:
         return {"answer": None, "source": "unknown"}
 
     def _learn(self, question, answer, source):
-        self.memory.learn(question, answer, source)
+        self.memory.learn_knowledge(question, answer, source=source, importance=4)
 
     @staticmethod
     def _best_wikipedia_answer(results):
         item = results[0]
-        return item.get("extract") or item.get("snippet") or item.get("title")
+        answer = item.get("extract") or item.get("snippet") or item.get("title")
+        url = item.get("url")
+        if answer and url:
+            return f"{answer}\nSource: {url}"
+        return answer
 
     @staticmethod
     def _best_web_answer(results):
