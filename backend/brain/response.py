@@ -203,8 +203,27 @@ def generate_response(message, context, knowledge, search_manager, user_id=None)
         except Exception:
             pass
 
+    fallback = _fallback_answer(intent, message)
+    if user_id is not None:
+        try:
+            from backend.api.creator import record_learning_item
+
+            if intent in {"technical", "knowledge", "research"}:
+                record_learning_item(
+                    message, "failed_response", response=fallback, source="web_search_failed",
+                    user_id=int(user_id),
+                )
+            elif intent in {"general", "casual", "personal", "identity"} and _looks_like_question(message):
+                record_learning_item(
+                    message, "owner_question", response=fallback, source="owner_needed",
+                    user_id=int(user_id),
+                )
+        except Exception:
+            # A learning queue failure must never break normal chat.
+            pass
+
     return {
-        "answer": _fallback_answer(intent, message),
+        "answer": fallback,
         "source": "fallback",
         "intent": intent,
         "confidence": parsed["confidence"],
