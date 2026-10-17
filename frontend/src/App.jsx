@@ -164,9 +164,167 @@ function AuthScreen({ onLogin, sessionNotice = "" }) {
     );
 }
 
+function CreatorDashboard({ onBack }) {
+    const [tab, setTab] = useState("overview");
+    const [overview, setOverview] = useState(null);
+    const [items, setItems] = useState([]);
+    const [knowledge, setKnowledge] = useState([]);
+    const [status, setStatus] = useState("pending");
+    const [answers, setAnswers] = useState({});
+    const [busy, setBusy] = useState(false);
+    const [notice, setNotice] = useState("");
+    const [error, setError] = useState("");
+
+    const loadOverview = async () => setOverview(await jsonRequest("/creator/overview"));
+    const loadQueue = async (kind = null, nextStatus = status) => {
+        const query = new URLSearchParams();
+        if (kind) query.set("kind", kind);
+        query.set("status", nextStatus);
+        query.set("limit", "200");
+        const data = await jsonRequest(`/creator/learning-queue?${query.toString()}`);
+        setItems(data.items || []);
+    };
+    const loadKnowledge = async () => {
+        const data = await jsonRequest("/creator/knowledge?limit=200");
+        setKnowledge(data.items || []);
+    };
+
+    const refresh = async () => {
+        setBusy(true);
+        setError("");
+        try {
+            await loadOverview();
+            if (tab === "owner") await loadQueue("owner_question");
+            else if (tab === "failed") await loadQueue("failed_response");
+            else if (tab === "knowledge") await loadKnowledge();
+            else await loadQueue(null);
+        } catch (err) {
+            setError(err.message || "Could not load creator data.");
+        } finally {
+            setBusy(false);
+        }
+    };
+
+    useEffect(() => { void refresh(); }, [tab, status]);
+
+    const submitAnswer = async (item) => {
+        const answer = (answers[item.id] || "").trim();
+        if (!answer) return;
+        setBusy(true);
+        setError("");
+        setNotice("");
+        try {
+            await jsonRequest(`/creator/learning-queue/${item.id}/answer`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ answer }),
+            });
+            setAnswers((current) => ({ ...current, [item.id]: "" }));
+            setNotice("Answer saved to Medha's reusable memory.");
+            await refresh();
+        } catch (err) {
+            setError(err.message || "Could not save the answer.");
+        } finally {
+            setBusy(false);
+        }
+    };
+
+    const dismissItem = async (item) => {
+        setBusy(true);
+        setError("");
+        try {
+            await jsonRequest(`/creator/learning-queue/${item.id}/dismiss`, { method: "POST" });
+            await refresh();
+        } catch (err) {
+            setError(err.message || "Could not dismiss item.");
+        } finally {
+            setBusy(false);
+        }
+    };
+
+    const nav = [
+        { id: "overview", label: "Overview", icon: "◫" },
+        { id: "owner", label: "Questions for owner", icon: "?" },
+        { id: "failed", label: "Failed responses", icon: "!" },
+        { id: "knowledge", label: "Learned knowledge", icon: "⌘" },
+    ];
+
+    return (
+        <section className="creator-app">
+            <header className="creator-header">
+                <div>
+                    <p className="eyebrow">MEDHA / CREATOR WORKSPACE</p>
+                    <h1>Creator console</h1>
+                    <p>Review unknown questions, correct failed answers, and manage what Medha learns.</p>
+                </div>
+                <button className="creator-back" onClick={onBack}>← Back to chat</button>
+            </header>
+            <nav className="creator-tabs" aria-label="Creator tools">
+                {nav.map((item) => <button key={item.id} className={tab === item.id ? "selected" : ""} onClick={() => setTab(item.id)}><span>{item.icon}</span>{item.label}</button>)}
+            </nav>
+            {error && <div className="creator-alert error">{error}</div>}
+            {notice && <div className="creator-alert">{notice}</div>}
+            {tab === "overview" && (
+                <div className="creator-content">
+                    <div className="creator-stat-grid">
+                        <article className="creator-stat"><span>Needs owner answer</span><strong>{overview?.pending_owner_questions ?? "—"}</strong><small>Casual or personal questions</small></article>
+                        <article className="creator-stat"><span>Failed research</span><strong>{overview?.failed_responses ?? "—"}</strong><small>Technical or factual questions</small></article>
+                        <article className="creator-stat"><span>Learned knowledge</span><strong>{overview?.learned_knowledge ?? "—"}</strong><small>Stored research knowledge</small></article>
+                        <article className="creator-stat"><span>Resolved</span><strong>{overview?.resolved_items ?? "—"}</strong><small>Items answered by creator</small></article>
+                    </div>
+                    <div className="creator-section-heading"><div><h2>Learning workflow</h2><p>Choose a queue to review the next thing Medha needs to learn.</p></div></div>
+                    <div className="creator-option-grid">
+                        <button onClick={() => setTab("owner")}><span>?</span><strong>Answer owner questions</strong><small>Teach Medha personal facts and unknown casual answers.</small></button>
+                        <button onClick={() => setTab("failed")}><span>!</span><strong>Review failed responses</strong><small>Inspect questions web search couldn't answer reliably.</small></button>
+                        <button onClick={() => setTab("knowledge")}><span>⌘</span><strong>Browse learned knowledge</strong><small>Check saved knowledge and its source.</small></button>
+                    </div>
+                    <div className="creator-section-heading"><div><h2>Recent audit activity</h2><p>Recent events from this backend session.</p></div></div>
+                    <div className="creator-list">
+                        {(overview?.recent_activity || []).slice().reverse().slice(0, 8).map((event, index) => <article key={index} className="creator-activity"><strong>{event.event}</strong><small>{JSON.stringify(event.data || {})}</small></article>)}
+                        {!overview?.recent_activity?.length && <p className="creator-empty">No audit events yet.</p>}
+                    </div>
+                </div>
+            )}
+            {(tab === "owner" || tab === "failed") && (
+                <div className="creator-content">
+                    <div className="creator-section-heading">
+                        <div><h2>{tab === "owner" ? "Questions waiting for you" : "Responses that need research"}</h2><p>{tab === "owner" ? "Answer these and Medha will save the response to personal memory." : "These are questions for which Medha couldn't find a usable answer. Research them, then provide a reliable answer."}</p></div>
+                        <select value={status} onChange={(event) => setStatus(event.target.value)} aria-label="Queue status"><option value="pending">Pending</option><option value="answered">Answered</option><option value="dismissed">Dismissed</option><option value="all">All statuses</option></select>
+                    </div>
+                    <div className="creator-list">
+                        {items.map((item) => <article key={item.id} className="creator-queue-card">
+                            <div className="creator-queue-top"><span className={item.kind === "owner_question" ? "queue-pill owner" : "queue-pill failed"}>{item.kind === "owner_question" ? "Owner input" : "Research failed"}</span><span className="queue-status">{item.status}</span></div>
+                            <h3>{item.question}</h3>
+                            <p className="creator-muted">Intent: {item.intent} · Source: {item.source || "unknown"} · {new Date(item.created_at).toLocaleString()}</p>
+                            {item.response && <div className="creator-original-response"><strong>Medha's response</strong><p>{item.response}</p></div>}
+                            {item.owner_answer && <div className="creator-original-response"><strong>Saved answer</strong><p>{item.owner_answer}</p></div>}
+                            {item.status === "pending" && <>
+                                <textarea value={answers[item.id] || ""} onChange={(event) => setAnswers((current) => ({ ...current, [item.id]: event.target.value }))} placeholder={tab === "owner" ? "Type the correct answer for Medha to learn..." : "Enter a verified answer, with relevant details or source URL..."} rows={3}/>
+                                <div className="creator-card-actions"><button className="creator-save" disabled={busy || !(answers[item.id] || "").trim()} onClick={() => submitAnswer(item)}>Save answer & teach Medha</button><button className="creator-dismiss" disabled={busy} onClick={() => dismissItem(item)}>Dismiss</button></div>
+                            </>}
+                        </article>)}
+                        {!items.length && <div className="creator-empty"><strong>Nothing in this queue</strong><p>When Medha can't answer a question, it will appear here for review.</p></div>}
+                    </div>
+                </div>
+            )}
+            {tab === "knowledge" && (
+                <div className="creator-content">
+                    <div className="creator-section-heading"><div><h2>Learned knowledge</h2><p>Stored research and technical answers. The source label indicates where the answer came from.</p></div></div>
+                    <div className="creator-list">
+                        {knowledge.map((item) => <article key={item.id} className="creator-queue-card"><div className="creator-queue-top"><span className="queue-pill knowledge">{item.source || "knowledge"}</span><span className="queue-status">Importance {item.importance}</span></div><h3>{item.text}</h3><p>{item.answer}</p><p className="creator-muted">Last used: {item.last_used_at ? new Date(item.last_used_at).toLocaleString() : "Not recorded"}</p></article>)}
+                        {!knowledge.length && <p className="creator-empty">No learned knowledge stored yet.</p>}
+                    </div>
+                </div>
+            )}
+            {busy && <p className="creator-loading">Working…</p>}
+        </section>
+    );
+}
+
 function App() {
     const [username, setUsername] = useState(localStorage.getItem("medha_username") || "");
     const [role, setRole] = useState((localStorage.getItem("medha_role") || "user").toLowerCase());
+    const [activeView, setActiveView] = useState("chat");
     const [chats, setChats] = useState([]);
     const [activeChat, setActiveChat] = useState(null);
     const [messages, setMessages] = useState([]);
@@ -468,6 +626,7 @@ function App() {
                             <span className="account-role">{role === "creator" ? "Creator" : role === "host" ? "Host" : role === "admin" ? "Admin" : "User"}</span>
                         </div>
                     </div>
+                    {["creator", "host", "admin"].includes(role) && <button className={`side-action creator-side-link ${activeView === "creator" ? "selected" : ""}`} onClick={() => setActiveView(activeView === "creator" ? "chat" : "creator")}>✦ Creator console</button>}
                     <button className="side-action" onClick={renameActive} disabled={!activeChat}>Rename</button>
                     <button className="side-action" onClick={changePassword}>Change password</button>
                     <button className="side-action" onClick={generateRecoveryCode}>Recovery code</button>
@@ -476,7 +635,7 @@ function App() {
                 </div>
             </aside>
 
-            <section className="chat-app">
+            {["creator", "host", "admin"].includes(role) && activeView === "creator" ? <CreatorDashboard onBack={() => setActiveView("chat")} /> : <section className="chat-app">
                 <header className="header">
                     <button className="mobile-menu" onClick={() => setSidebarOpen(!sidebarOpen)}>☰</button>
                     <div>
@@ -541,7 +700,7 @@ function App() {
                     </div>
                     <p className="composer-hint">Enter to send · Shift + Enter for a new line</p>
                 </div>
-            </section>
+            </section>}
         </div>
     );
 }
