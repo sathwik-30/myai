@@ -128,7 +128,13 @@ class ConversationEngine:
         ).strip()
         if not correction:
             return False
-        self.memory.learn_personal(previous_question, correction, importance=5)
+        previous_intent = understand(previous_question).get("intent", "general")
+        if previous_intent in {"technical", "knowledge", "research"}:
+            self.memory.learn_knowledge(
+                previous_question, correction, source="creator_correction", importance=5
+            )
+        else:
+            self.memory.learn_personal(previous_question, correction, importance=5)
         audit_store.record(
             "memory.correction",
             user_id=self.user_id,
@@ -161,8 +167,17 @@ class ConversationEngine:
                     if previous_answer.startswith("I don't know that yet.") and message.strip():
                         previous_question = history[-2].get("message", "") if len(history) >= 2 else ""
                         if previous_question:
-                            self.memory.learn_personal(previous_question, message.strip(), importance=5)
-                            response, source = "Got it. I'll remember that for our future conversations.", "memory_saved"
+                            previous_intent = understand(previous_question).get("intent", "general")
+                            if previous_intent in {"technical", "knowledge", "research"}:
+                                self.memory.learn_knowledge(
+                                    previous_question, message.strip(),
+                                    source="creator", importance=5
+                                )
+                            else:
+                                self.memory.learn_personal(
+                                    previous_question, message.strip(), importance=5
+                                )
+                            response, source = "Got it. I've learned from your answer and will use it for related questions.", "memory_saved"
                             learned_from_followup = True
 
                 if not learned_from_followup:
