@@ -83,6 +83,19 @@ def record_learning_item(question: str, kind: str, response: str = "", source: s
     return True
 
 
+def resolve_owner_question(question: str, user_id: int, answer: str) -> bool:
+    """Mark a queued owner question as answered when the owner replies in chat."""
+    now = datetime.now(timezone.utc).isoformat()
+    with _connect() as db:
+        cur = db.execute(
+            """UPDATE creator_learning_queue SET status='answered',owner_answer=?,updated_at=?
+               WHERE user_id=? AND question=? AND kind='owner_question' AND status='pending'""",
+            (str(answer or "")[:8000], now, int(user_id), " ".join(str(question or "").split())[:8000]),
+        )
+        db.commit()
+    return bool(cur.rowcount)
+
+
 class OwnerAnswer(BaseModel):
     answer: str = Field(..., min_length=1, max_length=8000)
 
