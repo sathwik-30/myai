@@ -154,7 +154,7 @@ def answer_learning_item(item_id: int, request: OwnerAnswer, user=Depends(curren
             raise HTTPException(status_code=404, detail="Learning item not found")
         manager = MemoryManager(user_id=user_id)
         intent = item["intent"]
-        if intent in {"technical", "knowledge", "research"}:
+        if item["kind"] == "failed_response" or intent in {"technical", "knowledge", "research"}:
             manager.learn_knowledge(
                 item["question"], answer, source="creator_answer", importance=5
             )
