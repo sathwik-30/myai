@@ -64,7 +64,7 @@ async function jsonRequest(path, options = {}) {
     return data;
 }
 
-function AuthScreen({ onLogin }) {
+function AuthScreen({ onLogin, sessionNotice = "" }) {
     const [mode, setMode] = useState("login");
     const [username, setUsername] = useState("");
     const [password, setPassword] = useState("");
@@ -134,6 +134,7 @@ function AuthScreen({ onLogin }) {
                             ? "Create a private account for your conversations and memories."
                             : "Use your username and recovery code to set a new password."}
                 </p>
+                {sessionNotice && <div className="auth-notice">{sessionNotice}</div>}
                 <form onSubmit={submit}>
                     <input value={username} onChange={(e) => setUsername(e.target.value)} placeholder="Username" autoComplete="username" minLength={3} maxLength={40} required />
                     {mode === "reset" && (
@@ -175,6 +176,7 @@ function App() {
     const [loading, setLoading] = useState(false);
     const [sidebarOpen, setSidebarOpen] = useState(true);
     const [error, setError] = useState("");
+    const [sessionNotice, setSessionNotice] = useState("");
     const textareaRef = useRef(null);
     const messagesEndRef = useRef(null);
     const activeChatIdRef = useRef(null);
@@ -224,7 +226,7 @@ function App() {
         } catch (err) {
             if (err.status === 401) {
                 logout();
-                setError("Your session expired or the backend authentication key changed. Sign in again.");
+                setSessionNotice("Your session expired or the backend authentication key changed. Sign in again.");
             } else {
                 setError(`Could not create chat: ${err.message}`);
             }
@@ -382,6 +384,7 @@ function App() {
     };
 
     const handleLogin = (nextUsername, nextRole = "user") => {
+        setSessionNotice("");
         setUsername(nextUsername);
         setRole(String(nextRole || "user").toLowerCase());
     };
@@ -422,7 +425,7 @@ function App() {
                 if (cancelled) return;
                 if (err.status === 401) {
                     logout();
-                    setError("Your session expired or the backend authentication key changed. Sign in again.");
+                    setSessionNotice("Your session expired or the backend authentication key changed. Sign in again.");
                 } else {
                     setError(err.message);
                 }
@@ -439,7 +442,7 @@ function App() {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }, [messages, loading]);
 
-    if (!username) return <AuthScreen onLogin={handleLogin} />;
+    if (!username) return <AuthScreen onLogin={handleLogin} sessionNotice={sessionNotice} />;
 
     return (
         <div className="app-shell">
