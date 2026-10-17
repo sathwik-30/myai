@@ -177,6 +177,11 @@ class ConversationEngine:
                                 self.memory.learn_personal(
                                     previous_question, message.strip(), importance=5
                                 )
+                                try:
+                                    from backend.api.creator import resolve_owner_question
+                                    resolve_owner_question(previous_question, int(self.user_id), message.strip())
+                                except Exception:
+                                    logger.exception("Could not resolve creator learning queue item")
                             response, source = "Got it. I've learned from your answer and will use it for related questions.", "memory_saved"
                             learned_from_followup = True
 
