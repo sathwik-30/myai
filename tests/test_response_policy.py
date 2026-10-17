@@ -86,3 +86,47 @@ def test_core_override_loader_returns_policy_text():
 
     override = load_override()
     assert "MEDHA CORE AUTHORITY" in override
+
+
+
+def test_auth_secret_is_stable_across_reloads(tmp_path, monkeypatch):
+    from backend.auth import security
+
+    secret_path = tmp_path / "auth" / ".auth_secret"
+    monkeypatch.setattr(security, "SECRET_PATH", secret_path)
+    monkeypatch.delenv("MEDHA_AUTH_SECRET", raising=False)
+
+    first = security._load_secret()
+    second = security._load_secret()
+
+    assert first == second
+    assert secret_path.read_bytes() == first
+    assert len(first) >= 32
+
+
+def test_token_round_trip_and_expired_token_rejection():
+    import time
+    from backend.auth import security
+
+    token = security.create_token(123, "medha-test", "user")
+    payload = security.decode_token(token)
+    assert payload is not None
+    assert payload["sub"] == 123
+    assert payload["username"] == "medha-test"
+
+    expired_payload = {
+        "sub": 123,
+        "username": "medha-test",
+        "role": "user",
+        "iat": int(time.time()) - 120,
+        "exp": int(time.time()) - 60,
+    }
+    import json
+    header = security._b64(json.dumps({"alg": "HS256", "typ": "JWT"}, separators=(",", ":")).encode())
+    body = security._b64(json.dumps(expired_payload, separators=(",", ":")).encode())
+    import hmac
+    import hashlib
+    signature = security._b64(
+        hmac.new(security.SECRET, (header + "." + body).encode(), hashlib.sha256).digest()
+    )
+    assert security.decode_token(header + "." + body + "." + signature) is None
