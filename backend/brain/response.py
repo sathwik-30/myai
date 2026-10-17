@@ -93,13 +93,30 @@ def _legacy_decoder_answer(message, context):
         return None
 
 
+def _looks_like_question(message):
+    value = " ".join(str(message or "").strip().lower().split())
+    if "?" in value:
+        return True
+    starters = (
+        "who ", "what ", "when ", "where ", "why ", "how ", "which ",
+        "whose ", "whom ", "is ", "are ", "am ", "was ", "were ",
+        "do ", "does ", "did ", "can ", "could ", "would ", "will ",
+        "should ", "has ", "have ", "had ", "explain ", "define ",
+        "tell me ", "what's ", "whats ", "who's ", "whos ",
+    )
+    return value.startswith(starters)
+
+
 def _fallback_answer(intent, message):
+    if intent in {"technical", "knowledge", "research"}:
+        return "I couldn't find a sufficiently reliable answer in my local resources or web search. I won't guess."
+    if intent in {"general", "casual", "personal", "identity"} and _looks_like_question(message):
+        return (
+            "I don't know that yet. Sathwik, what is the correct answer? "
+            "I'll learn from your reply and use it for related questions later."
+        )
     if intent in {"general", "casual", "greeting", "status", "thanks"}:
-        return "I'm having trouble reaching my local language model right now."
-    if intent == "technical":
-        return "I can help with that, but I need a little more information about the problem."
-    if intent in {"knowledge", "research"}:
-        return "I couldn't retrieve a reliable answer for that right now."
+        return "My local language model isn't available right now, so I can't generate a normal reply."
     return f"I couldn't process that reliably yet, {OWNER_NAME}."
 
 
