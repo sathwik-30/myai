@@ -222,7 +222,12 @@ function App() {
             setInput(initialPrompt);
             setTimeout(() => textareaRef.current?.focus(), 0);
         } catch (err) {
-            setError(`Could not create chat: ${err.message}`);
+            if (err.status === 401) {
+                logout();
+                setError("Your session expired or the backend authentication key changed. Sign in again.");
+            } else {
+                setError(`Could not create chat: ${err.message}`);
+            }
         }
     };
 
@@ -392,6 +397,8 @@ function App() {
         setChats([]);
         setMessages([]);
         setActiveChat(null);
+        setInput("");
+        setLoading(false);
     };
 
     useEffect(() => {
@@ -414,14 +421,8 @@ function App() {
             } catch (err) {
                 if (cancelled) return;
                 if (err.status === 401) {
-                    localStorage.removeItem("medha_token");
-                    localStorage.removeItem("medha_username");
-                    localStorage.removeItem("medha_role");
-                    setUsername("");
-                    setRole("user");
-                    setChats([]);
-                    setMessages([]);
-                    setActiveChat(null);
+                    logout();
+                    setError("Your session expired or the backend authentication key changed. Sign in again.");
                 } else {
                     setError(err.message);
                 }
