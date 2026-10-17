@@ -16,22 +16,50 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 SECRET_PATH = PROJECT_ROOT / "backend/auth/data/.auth_secret"
 
 def _load_secret() -> bytes:
-    configured = os.getenv("MEDHA_AUTH_SECRET")
+    configured = os.getenv("MEDHA_AUTH_SECRET", "").strip()
     if configured:
         return configured.encode()
+
+    # Use one stable project-local secret across reloads/processes. Exclusive
+    # creation prevents two Medha instances from overwriting each other's key
+    # during first startup and immediately invalidating freshly issued tokens.
     SECRET_PATH.parent.mkdir(parents=True, exist_ok=True)
     try:
         value = SECRET_PATH.read_text(encoding="utf-8").strip()
-    except OSError:
+    except FileNotFoundError:
         value = ""
-    if not value:
-        value = secrets.token_urlsafe(64)
-        SECRET_PATH.write_text(value, encoding="utf-8")
-        try:
-            os.chmod(SECRET_PATH, 0o600)
-        except OSError:
-            pass
-    return value.encode()
+    except OSError as exc:
+        raise RuntimeError(f"Cannot read Medha auth secret at {SECRET_PATH}: {exc}") from exc
+
+    if value:
+        return value.encode()
+    if SECRET_PATH.exists():
+        raise RuntimeError(
+            f"Medha auth secret at {SECRET_PATH} is empty. Restore it or remove it "
+            "while Medha is stopped, then restart and sign in again."
+        )
+
+    candidate = secrets.token_urlsafe(64)
+    try:
+        descriptor = os.open(
+            str(SECRET_PATH),
+            os.O_CREAT | os.O_EXCL | os.O_WRONLY,
+            0o600,
+        )
+    except FileExistsError:
+        # Another process won the first-start race. Read its stable key.
+        value = SECRET_PATH.read_text(encoding="utf-8").strip()
+        if not value:
+            raise RuntimeError(f"Medha auth secret at {SECRET_PATH} is empty.")
+        return value.encode()
+    except OSError as exc:
+        raise RuntimeError(f"Cannot create Medha auth secret at {SECRET_PATH}: {exc}") from exc
+
+    with os.fdopen(descriptor, "w", encoding="utf-8") as secret_file:
+        secret_file.write(candidate)
+        secret_file.flush()
+        os.fsync(secret_file.fileno())
+    return candidate.encode()
 
 SECRET = _load_secret()
 TOKEN_TTL = 60 * 60 * 24 * 7
