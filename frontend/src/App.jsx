@@ -25,13 +25,12 @@ async function apiRequest(path, options = {}) {
     for (const base of API_CANDIDATES) {
         const controller = new AbortController();
         const timer = setTimeout(() => controller.abort(), timeoutMs);
+        const forwardAbort = () => controller.abort();
         try {
             const headers = { ...(fetchOptions.headers || {}) };
             const token = localStorage.getItem("medha_token");
             if (token) headers.Authorization = `Bearer ${token}`;
-            if (fetchOptions.signal) {
-                fetchOptions.signal.addEventListener("abort", () => controller.abort(), { once: true });
-            }
+            fetchOptions.signal?.addEventListener("abort", forwardAbort, { once: true });
 
             const response = await fetch(`${base}${path}`, {
                 ...fetchOptions,
@@ -47,6 +46,7 @@ async function apiRequest(path, options = {}) {
             lastError = error;
         } finally {
             clearTimeout(timer);
+            fetchOptions.signal?.removeEventListener("abort", forwardAbort);
         }
     }
     throw lastError || new Error("Unable to reach Medha backend");

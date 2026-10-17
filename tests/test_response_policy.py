@@ -20,7 +20,8 @@ def test_question_can_be_answered_when_override_is_unavailable(tmp_path):
             return_value={"intent": "knowledge", "confidence": 1.0},
         ),
         patch.object(response.UNDERSTANDING, "best_memory_answer", return_value=None),
-        patch.object(response, "_decoder_answer", return_value=None),
+        patch.object(response, "_transformer_answer", return_value=None),
+        patch.object(response, "_legacy_decoder_answer", return_value=None),
     ):
         result = response.generate_response(
             "What is photosynthesis?", [], None, search_manager

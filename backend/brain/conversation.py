@@ -27,6 +27,12 @@ CORRECTION_PREFIXES = (
     "correct answer:",
     "the correct answer is",
 )
+ANSWER_PREFIXES = (
+    "answer:",
+    "the answer is",
+    "correct answer:",
+    "the correct answer is",
+)
 
 class ConversationEngine:
     """Local conversation engine with guarded actions and durable corrections."""
@@ -128,6 +134,16 @@ class ConversationEngine:
         ).strip()
         if not correction:
             return False
+        if re.search(r"\b(speak|talk|sound|tone|wordy|verbose|concise|brief|casual|formal|natural|robotic)\b", correction, re.IGNORECASE):
+            self.memory.learn_personal(
+                "communication style preference", correction, importance=5
+            )
+            audit_store.record(
+                "memory.communication_preference",
+                user_id=self.user_id,
+                correction=correction,
+            )
+            return True
         previous_intent = understand(previous_question).get("intent", "general")
         if previous_intent in {"technical", "knowledge", "research"}:
             self.memory.learn_knowledge(
@@ -164,22 +180,28 @@ class ConversationEngine:
                 learned_from_followup = False
                 if history and history[-1].get("role") == "assistant":
                     previous_answer = history[-1].get("message", "")
-                    if previous_answer.startswith("I don't know that yet.") and message.strip():
+                    normalized_message = " ".join(message.strip().lower().split())
+                    explicit_answer = any(normalized_message.startswith(prefix) for prefix in ANSWER_PREFIXES)
+                    if previous_answer.startswith("I don't know that yet.") and explicit_answer:
                         previous_question = history[-2].get("message", "") if len(history) >= 2 else ""
                         if previous_question:
+                            learned_answer = re.sub(
+                                r"^(?:answer:\s*|the answer is\s*|correct answer:\s*|the correct answer is\s*)",
+                                "", message.strip(), flags=re.IGNORECASE,
+                            ).strip() or message.strip()
                             previous_intent = understand(previous_question).get("intent", "general")
                             if previous_intent in {"technical", "knowledge", "research"}:
                                 self.memory.learn_knowledge(
-                                    previous_question, message.strip(),
+                                    previous_question, learned_answer,
                                     source="creator", importance=5
                                 )
                             else:
                                 self.memory.learn_personal(
-                                    previous_question, message.strip(), importance=5
+                                    previous_question, learned_answer, importance=5
                                 )
                                 try:
                                     from backend.api.creator import resolve_owner_question
-                                    resolve_owner_question(previous_question, int(self.user_id), message.strip())
+                                    resolve_owner_question(previous_question, int(self.user_id), learned_answer)
                                 except Exception:
                                     logger.exception("Could not resolve creator learning queue item")
                             response, source = "Got it. I've learned from your answer and will use it for related questions.", "memory_saved"
@@ -190,10 +212,15 @@ class ConversationEngine:
                     if intent == "permanent":
                         self.memory.learn_permanent(message, message, source="user", importance=5)
                         response, source = "Got it. I'll keep that in my permanent memory.", "permanent_memory_saved"
-                    elif intent in {"memory", "personal"}:
-                        self.memory.learn_personal(message, message, importance=5 if intent == "memory" else 4)
-                        response = "Got it. I'll remember that." if intent == "memory" else "Got it. I'll keep that in mind for future conversations."
+                    elif intent == "memory":
+                        self.memory.learn_personal(message, message, importance=5)
+                        response = "Got it. I'll remember that."
                         source = "memory_saved"
+                    elif re.search(r"\b(please|prefer|rather)\b.*\b(speak|talk|answer|respond|explain|brief|concise|casual|formal|natural)\b", message, re.IGNORECASE):
+                        self.memory.learn_personal(
+                            "communication style preference", message.strip(), importance=5
+                        )
+                        response, source = "Got it. I'll use that communication preference.", "memory_saved"
                     else:
                         decision = evaluate_memory(message, response, source)
                         if decision["save"]:

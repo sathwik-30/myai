@@ -1,4 +1,5 @@
 from backend.memory.manager import MemoryManager
+from backend.agent.permissions import PermissionProfile
 from backend.search.wikipedia import search_wikipedia
 from backend.search.web import search_web
 from backend.knowledge.resource_loader import search_resources
@@ -32,19 +33,20 @@ class SearchManager:
                 "resource": item["path"],
             }
 
-        wikipedia_results = search_wikipedia(question)
-        if wikipedia_results:
-            answer = self._best_wikipedia_answer(wikipedia_results)
-            if answer:
-                self._learn(question, answer, "wikipedia")
-                return {"answer": answer, "source": "wikipedia"}
+        if PermissionProfile.from_policy().can("web"):
+            wikipedia_results = search_wikipedia(question)
+            if wikipedia_results:
+                answer = self._best_wikipedia_answer(wikipedia_results)
+                if answer:
+                    self._learn(question, answer, "wikipedia")
+                    return {"answer": answer, "source": "wikipedia"}
 
-        web_results = search_web(question)
-        if web_results:
-            answer = self._best_web_answer(web_results)
-            if answer:
-                self._learn(question, answer, "web")
-                return {"answer": answer, "source": "web"}
+            web_results = search_web(question)
+            if web_results:
+                answer = self._best_web_answer(web_results)
+                if answer:
+                    self._learn(question, answer, "web")
+                    return {"answer": answer, "source": "web"}
 
         return {"answer": None, "source": "unknown"}
 

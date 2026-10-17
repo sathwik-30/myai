@@ -1,6 +1,7 @@
 from backend.brain.identity import OWNER_NAME
 from backend.brain.intent import understand
 from backend.brain.understanding import LanguageUnderstanding
+from backend.agent.permissions import PermissionProfile
 from backend.core.policy import apply_override
 
 UNDERSTANDING = LanguageUnderstanding()
@@ -24,7 +25,7 @@ def _recent_context(context, limit=12):
     return result
 
 
-def _transformer_answer(message, context, memory_hint=None):
+def _transformer_answer(message, context, memory_hint=None, communication_preference=None):
     """Use the learned language model for normal conversation.
 
     No individual casual message is mapped to a hardcoded response here.
@@ -59,6 +60,14 @@ def _transformer_answer(message, context, memory_hint=None):
             messages.append({
                 "role": "system",
                 "content": f"Relevant remembered information: {memory_hint}",
+            })
+        if communication_preference:
+            messages.append({
+                "role": "system",
+                "content": (
+                    "Apply this user communication preference when answering: "
+                    f"{communication_preference}"
+                ),
             })
         messages.append({"role": "user", "content": message})
         answer = runtime.generate(messages, max_new_tokens=128, temperature=0.7, top_p=0.9)
@@ -114,12 +123,12 @@ def _looks_like_question(message):
 def _fallback_answer(intent, message):
     if intent in {"technical", "knowledge", "research"}:
         return "I couldn't find a sufficiently reliable answer in my local resources or web search. I won't guess."
-    if intent in {"general", "casual", "personal", "identity"} and _looks_like_question(message):
+    if intent in {"personal", "identity"} and _looks_like_question(message):
         return (
             "I don't know that yet. Sathwik, what is the correct answer? "
             "I'll learn from your reply and use it for related questions later."
         )
-    if intent in {"general", "casual", "greeting", "status", "thanks"}:
+    if intent in {"general", "casual", "greeting", "status", "thanks", "capability"}:
         return "My local language model isn't available right now, so I can't generate a normal reply."
     return f"I couldn't process that reliably yet, {OWNER_NAME}."
 
@@ -131,6 +140,21 @@ def generate_response(message, context, knowledge, search_manager, user_id=None)
 
     parsed = understand(message)
     intent = parsed["intent"]
+
+    normalized_message = " ".join(message.lower().split())
+    asks_about_web_access = (
+        any(term in normalized_message for term in ("web", "internet", "online"))
+        and any(term in normalized_message for term in ("can", "have", "has", "access", "connection", "search", "use", "enabled"))
+    )
+    if asks_about_web_access:
+        if PermissionProfile.from_policy().can("web"):
+            answer = (
+                "Yes. Web search is enabled for factual questions when this computer can reach the internet. "
+                "You can also use the Web button to search directly."
+            )
+        else:
+            answer = "Web search is currently disabled by Medha's authority policy."
+        return {"answer": answer, "source": "capability", "intent": "capability", "confidence": parsed["confidence"]}
 
     if intent not in _CONVERSATIONAL_INTENTS:
         policy_check = apply_override("", message)
@@ -148,7 +172,10 @@ def generate_response(message, context, knowledge, search_manager, user_id=None)
 
     # Factual retrieval is grounded before generation for knowledge/technical
     # requests. Ordinary conversation does not go through retrieval first.
-    if intent in {"knowledge", "research", "technical"}:
+    should_search = intent in {"knowledge", "research", "technical"} or (
+        intent == "general" and _looks_like_question(message)
+    )
+    if should_search:
         try:
             result = search_manager.process(message, context)
             if result and result.get("answer"):
@@ -164,13 +191,18 @@ def generate_response(message, context, knowledge, search_manager, user_id=None)
     # Normal conversation is model-generated. There is deliberately no
     # greeting/status/how-are-you lookup table here.
     memory_hint = None
+    communication_preference = None
     if intent in {"identity", "personal", "permanent", "general", "casual"}:
         try:
             memory_hint = UNDERSTANDING.best_memory_answer(message, context, user_id)
+            communication_preference = UNDERSTANDING.best_memory_answer(
+                "communication style preference", context, user_id
+            )
         except Exception:
             memory_hint = None
+            communication_preference = None
 
-    generated = _transformer_answer(message, context, memory_hint)
+    generated = _transformer_answer(message, context, memory_hint, communication_preference)
     if generated:
         return {
             "answer": generated,
@@ -190,7 +222,7 @@ def generate_response(message, context, knowledge, search_manager, user_id=None)
         }
 
     # Retrieval fallback for non-conversational requests.
-    if intent not in {"general", "casual", "greeting", "status", "thanks"}:
+    if intent not in {"general", "casual", "greeting", "status", "thanks"} and not should_search:
         try:
             result = search_manager.process(message, context)
             if result and result.get("answer"):
@@ -213,7 +245,7 @@ def generate_response(message, context, knowledge, search_manager, user_id=None)
                     message, "failed_response", response=fallback, source="web_search_failed",
                     user_id=int(user_id),
                 )
-            elif intent in {"general", "casual", "personal", "identity"} and _looks_like_question(message):
+            elif intent in {"personal", "identity"} and _looks_like_question(message):
                 record_learning_item(
                     message, "owner_question", response=fallback, source="owner_needed",
                     user_id=int(user_id),
